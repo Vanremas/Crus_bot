@@ -1236,14 +1236,14 @@ async def delete_all_broadcasts(update: Update, context: ContextTypes.DEFAULT_TY
          InlineKeyboardButton("❌ Нет", callback_data='admin_broadcasts_list')]
     ]
     await query.edit_message_text(
-        "🗑 **Удаление всех рассылок**\n\n"
+        "🗑 <b>Удаление всех рассылок</b>\n\n"
         "Вы уверены? Это удалит:\n"
         "• Все сообщения со статистикой\n"
         "• Все голоса пользователей\n"
         "• Все тексты рассылок\n\n"
-        "**Активность пользователей сохранится!**",
+        "<b>Активность пользователей сохранится!</b>",
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='MarkdownV2'
+        parse_mode='HTML'
     )
     await query.answer()
 
@@ -1267,8 +1267,8 @@ async def confirm_delete_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
         try:
             await context.bot.send_message(
                 chat_id=uid,
-                text="❌ **ВСЕ РАССЫЛКИ ОТМЕНЕНЫ**\n\nАдминистратор отменил все активные события.",
-                parse_mode='MarkdownV2'
+                text="❌ <b>ВСЕ РАССЫЛКИ ОТМЕНЕНЫ</b>\n\nАдминистратор отменил все активные события.",
+                parse_mode='HTML'
             )
         except Exception as e:
             logger.error(f"Failed to notify {uid} about cancelled broadcasts: {e}")
@@ -1276,9 +1276,9 @@ async def confirm_delete_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer(f"✅ Все рассылки удалены, уведомлено {len(users)} пользователей", show_alert=True)
     keyboard = get_admin_keyboard()
     await query.edit_message_text(
-        "👑 **Админ-панель**\n\nВыберите действие:",
+        "<b>👑 Админ-панель</b>\n\nВыберите действие:",
         reply_markup=keyboard,
-        parse_mode='MarkdownV2'
+        parse_mode='HTML'
     )
 
 
@@ -1290,11 +1290,11 @@ async def delete_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, b
          InlineKeyboardButton("❌ Нет, отмена", callback_data=f'back_to_stats_{broadcast_id}')]
     ]
     await query.edit_message_text(
-        f"🗑 **Удаление рассылки**\n\n"
-        f"Вы уверены, что хотите удалить рассылку `{broadcast_id}`?\n"
+        f"🗑 <b>Удаление рассылки</b>\n\n"
+        f"Вы уверены, что хотите удалить рассылку <code>{broadcast_id}</code>?\n"
         f"Это действие нельзя отменить!",
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='MarkdownV2'
+        parse_mode='HTML'
     )
     await query.answer()
 
@@ -1453,10 +1453,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Старая команда верификации - перенаправляет на новый способ."""
     await update.message.reply_text(
-        "📱 **Верификация теперь происходит по-новому!**\n\n"
-        "Чтобы верифицироваться, нажми **/start** и используй кнопку **'✅ Верифицироваться'**.\n\n"
+        "<b>📱 Верификация теперь происходит по-новому!</b>\n\n"
+        "Чтобы верифицироваться, нажми <b>/start</b> и используй кнопку <b>'✅ Верифицироваться'</b>.\n\n"
         "Там нужно будет указать свой ник в игре.",
-        parse_mode='MarkdownV2'
+        parse_mode='HTML'
     )
 
 
@@ -1468,8 +1468,9 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     keyboard = get_admin_keyboard()
     await update.message.reply_text(
-        "👑 **Админ-панель**\n\nВыберите действие:",
-        reply_markup=keyboard
+        "<b>👑 Админ-панель</b>\n\nВыберите действие:",
+        reply_markup=keyboard,
+        parse_mode='HTML'
     )
 
 
@@ -1548,9 +1549,11 @@ async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nickname = get_user_nickname(user.id) or "Не указан"
+    # Экранируем ник на случай, если в будущем добавится parse_mode
+    safe_nickname = escape_markdown_v2(nickname)
     attended = get_user_attended_count(user.id)
     text = f"👤 **Твой профиль**\n\n"
-    text += f"🎮 Ник в игре: **{nickname}**\n"
+    text += f"🎮 Ник в игре: **{safe_nickname}**\n"
     text += f"📊 Посещено мероприятий: **{attended}**\n"
 
     await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id))
@@ -1591,9 +1594,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if callback_data == 'back_to_me':
         # Возврат к профилю
         nickname = get_user_nickname(user.id) or "Не указан"
+        safe_nickname = escape_markdown_v2(nickname)
         attended = get_user_attended_count(user.id)
         text = f"👤 **Твой профиль**\n\n"
-        text += f"🎮 Ник в игре: **{nickname}**\n"
+        text += f"🎮 Ник в игре: **{safe_nickname}**\n"
         text += f"📊 Посещено мероприятий: **{attended}**\n"
         await query.edit_message_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='MarkdownV2')
         await query.answer()
@@ -1630,11 +1634,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             broadcasts_count = cur.fetchone()[0]
             conn.close()
             await query.edit_message_text(
-                f"📊 **Статистика бота**\n\n"
+                f"<b>📊 Статистика бота</b>\n\n"
                 f"👥 Верифицированных пользователей: {users_count}\n"
                 f"📢 Всего рассылок: {broadcasts_count}",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀️ Назад", callback_data='admin_back')]]),
-                parse_mode='MarkdownV2'
+                parse_mode='HTML'
             )
             return
 
@@ -1663,10 +1667,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not users:
                 text = "📭 Нет верифицированных пользователей" if page == 1 else "📭 Страница пуста"
             else:
-                text = f"👥 **Пользователи ({total})** - Страница {page}\n\n"
+                text = f"<b>👥 Пользователи ({total})</b> - Страница {page}\n\n"
                 for i, (first_name, username, nickname, verified_at) in enumerate(users, offset + 1):
                     name = nickname or first_name or "Unknown"
-                    # Экранируем все поля
+                    # Экранируем все поля для MarkdownV2
                     safe_name = escape_markdown_v2(name)
                     safe_username = escape_markdown_v2(username) if username else None
                     line = f"{i}. 👤 {safe_name}"
@@ -1690,9 +1694,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if callback_data == 'admin_back':
             await query.answer()
             await query.edit_message_text(
-                "👑 **Админ-панель**\n\nВыберите действие:",
+                "<b>👑 Админ-панель</b>\n\nВыберите действие:",
                 reply_markup=get_admin_keyboard(),
-                parse_mode='MarkdownV2'
+                parse_mode='HTML'
             )
             return
 
@@ -1718,12 +1722,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  InlineKeyboardButton("❌ Нет", callback_data='admin_back')]
             ]
             await query.edit_message_text(
-                "⚠️ **Сброс статистики**\n\n"
+                "<b>⚠️ Сброс статистики</b>\n\n"
                 "Это удалит ВСЮ историю активности и рейтинги.\n"
                 "Пользователи останутся в базе.\n\n"
                 "Точно продолжить?",
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode='MarkdownV2'
+                parse_mode='HTML'
             )
             return
 
@@ -1744,16 +1748,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         chat_id=uid,
-                        text="❌ **СТАТИСТИКА СБРОШЕНА**\n\nАдминистратор сбросил всю статистику. Все активные рассылки отменены.",
-                        parse_mode='MarkdownV2'
+                        text="❌ <b>СТАТИСТИКА СБРОШЕНА</b>\n\nАдминистратор сбросил всю статистику. Все активные рассылки отменены.",
+                        parse_mode='HTML'
                     )
                 except:
                     pass
             await query.answer(f"✅ Статистика полностью сброшена, уведомлено {len(users)} пользователей", show_alert=True)
             await query.edit_message_text(
-                "👑 **Админ-панель**\n\nСтатистика сброшена!",
+                "<b>👑 Админ-панель</b>\n\nСтатистика сброшена!",
                 reply_markup=get_admin_keyboard(),
-                parse_mode='MarkdownV2'
+                parse_mode='HTML'
             )
             return
 
@@ -2289,12 +2293,11 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "✅ Текст сохранён!\n\n"
                 "Шаг 2/3: Укажи время начала события.\n"
                 "Форматы:\n"
-                "• `0` - без времени (просто рассылка)\n"
-                "• `20:00` - сегодня в 20:00\n"
-                "• `15.03.2024 18:30` - конкретная дата\n"
-                "• `+2` - через 2 часа\n\n"
-                "❌ /cancel - отмена",
-                parse_mode='MarkdownV2'
+                "• 0 - без времени (просто рассылка)\n"
+                "• 20:00 - сегодня в 20:00\n"
+                "• 15.03.2024 18:30 - конкретная дата\n"
+                "• +2 - через 2 часа\n\n"
+                "❌ /cancel - отмена"
             )
             return
 
@@ -2309,10 +2312,10 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if event_time is False:
                 await update.message.reply_text(
                     "❌ Неверный формат времени. Попробуй ещё раз:\n\n"
-                    "• `0` - без времени\n"
-                    "• `20:00` - сегодня в 20:00\n"
-                    "• `15.03.2024 18:30` - дата и время\n"
-                    "• `+2` - через 2 часа"
+                    "• 0 - без времени\n"
+                    "• 20:00 - сегодня в 20:00\n"
+                    "• 15.03.2024 18:30 - дата и время\n"
+                    "• +2 - через 2 часа"
                 )
                 return
             context.user_data['event_time'] = event_time
@@ -2320,10 +2323,10 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 "✅ Время сохранено!\n\n"
                 "Шаг 3/3: Укажи кулдаун смены голоса (в минутах).\n"
-                "• `0` - без ограничений\n"
-                "• `5` - можно менять раз в 5 минут\n"
-                "• `30` - раз в полчаса\n"
-                "• `60` - раз в час\n\n"
+                "• 0 - без ограничений\n"
+                "• 5 - можно менять раз в 5 минут\n"
+                "• 30 - раз в полчаса\n"
+                "• 60 - раз в час\n\n"
                 "❌ /cancel - отмена"
             )
             return
@@ -2545,7 +2548,8 @@ async def handle_nickname_change(update: Update, context: ContextTypes.DEFAULT_T
     set_last_nickname_change(user.id, datetime.now().isoformat())
     context.user_data.pop('awaiting_nickname_change', None)
 
-    await update.message.reply_text(f"✅ Ник успешно изменён на **{new_nick}**!", parse_mode='MarkdownV2')
+    safe_new_nick = escape_markdown_v2(new_nick)
+    await update.message.reply_text(f"✅ Ник успешно изменён на **{safe_new_nick}**!", parse_mode='MarkdownV2')
     # Показываем обновлённый профиль
     await me_command(update, context)
     return True
