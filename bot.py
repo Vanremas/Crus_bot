@@ -776,6 +776,8 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     cur.execute('SELECT created_at FROM stats_messages WHERE broadcast_id = ?', (broadcast_id,))
     date_result = cur.fetchone()
     created_at = date_result[0][:16] if date_result else "неизвестно"
+    # Экранируем дату, так как она содержит дефисы
+    created_at = escape_markdown_v2(created_at)
 
     cur.execute('''
         SELECT v.user_id, v.choice, u.nickname, u.username, COALESCE(ua.attended, 0) as attended
