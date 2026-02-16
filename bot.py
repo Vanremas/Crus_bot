@@ -1469,8 +1469,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = get_admin_keyboard()
     await update.message.reply_text(
         "👑 **Админ-панель**\n\nВыберите действие:",
-        reply_markup=keyboard,
-        parse_mode='MarkdownV2'
+        reply_markup=keyboard
     )
 
 
