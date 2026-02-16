@@ -3,6 +3,7 @@ import sqlite3
 import uuid
 import html
 import os
+import io
 from datetime import datetime, timedelta
 
 from telegram import Update, ChatMember, InlineKeyboardButton, InlineKeyboardMarkup
@@ -244,6 +245,8 @@ def save_vote(user_id, broadcast_id, choice):
     ''', (user_id, broadcast_id, choice, datetime.now().isoformat()))
     conn.commit()
     conn.close()
+    # Пересчитываем статистику пользователя, так как изменилось общее количество событий
+    _update_user_stats(user_id)
 
 def save_broadcast_text(broadcast_id, text):
     conn = get_connection()
@@ -664,7 +667,6 @@ async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     for uid, username, first_name, nickname in all_users:
         if uid not in voted_users:
             display_name = nickname or first_name or "Unknown"
-            # Экранируем для HTML
             safe_display_name = html.escape(display_name)
             safe_username = html.escape(username) if username else None
             display = f"👤 {safe_display_name}" + (f" (@{safe_username})" if safe_username else "")
@@ -698,6 +700,49 @@ async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     await query.answer()
+
+async def download_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
+    """Отправляет админу файл с полным списком проигнорировавших."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    if user_id not in ADMIN_IDS:
+        await query.answer("❌ Нет доступа", show_alert=True)
+        return
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT user_id FROM votes WHERE broadcast_id = ?', (broadcast_id,))
+    voted_users = {row[0] for row in cur.fetchall()}
+    cur.execute('SELECT user_id, username, first_name, nickname FROM users ORDER BY verified_at DESC')
+    all_users = cur.fetchall()
+    conn.close()
+
+    if not all_users:
+        await query.answer("📭 В базе нет пользователей", show_alert=True)
+        return
+
+    ignored_list = []
+    for uid, username, first_name, nickname in all_users:
+        if uid not in voted_users:
+            display_name = nickname or first_name or "Unknown"
+            line = f"👤 {display_name}"
+            if username:
+                line += f" (@{username})"
+            ignored_list.append(line)
+
+    total = len(all_users)
+    voted = len(voted_users)
+    ignored = total - voted
+
+    content = f"Список проигнорировавших рассылку {broadcast_id}\n"
+    content += f"Всего: {total}, проголосовало: {voted}, игнорируют: {ignored}\n\n"
+    content += "\n".join(ignored_list)
+
+    file = io.BytesIO(content.encode('utf-8'))
+    file.name = f"ignored_{broadcast_id}.txt"
+
+    await query.answer()
+    await context.bot.send_document(chat_id=user_id, document=file, caption=f"📥 Полный список игнорирующих ({ignored} чел.)")
 
 async def show_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает список всех рассылок с пагинацией (админский)."""
@@ -738,6 +783,7 @@ async def show_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYP
     for i, (bid, created_at, preview, votes_cnt) in enumerate(broadcasts, 1):
         date_str = created_at[:16] if created_at else "неизвестно"
         preview_text = (preview[:30] + "...") if preview and len(preview) > 30 else (preview or "Нет текста")
+        preview_text = html.escape(preview_text)
         text += f"{i}. <code>{bid}</code>\n"
         text += f"   📅 {date_str}\n"
         text += f"   📝 {preview_text}\n"
@@ -776,7 +822,6 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     cur.execute('SELECT created_at FROM stats_messages WHERE broadcast_id = ?', (broadcast_id,))
     date_result = cur.fetchone()
     created_at = date_result[0][:16] if date_result else "неизвестно"
-    # Экранируем дату, так как она содержит дефисы
     created_at = escape_markdown_v2(created_at)
 
     cur.execute('''
@@ -825,15 +870,15 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     text = f"📢 **{broadcast_text}**\n"
     text += f"🆔 `{broadcast_id}`\n"
     text += f"📅 {created_at}\n\n"
-    text += f"✅ ** \\({len(going)}\\):**\n"
+    text += f"✅ ** ({len(going)}):**\n"
     for i, user in enumerate(going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-    text += f"❌ ** \\({len(not_going)}\\):**\n"
+    text += f"❌ ** ({len(not_going)}):**\n"
     for i, user in enumerate(not_going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-    text += f"⚠️ **Проигнорировали \\({len(ignored)}\\):**\n"
+    text += f"⚠️ **Проигнорировали ({len(ignored)}):**\n"
     for i, user in enumerate(ignored, 1):
         text += f"{i}. {user}\n"
 
@@ -1059,7 +1104,8 @@ async def handle_attendance_numbers(update: Update, context: ContextTypes.DEFAUL
                 update_user_attendance(uid, broadcast_id, True)
                 marked += 1
                 name = nick or username or f"ID {uid}"
-                marked_list.append(f"  {num}. {name}")
+                safe_name = escape_markdown_v2(name)
+                marked_list.append(f"  {num}. {safe_name}")
             except Exception as e:
                 logger.error(f"Error marking attendance for user {uid}: {e}")
                 errors += 1
@@ -1079,7 +1125,7 @@ async def handle_attendance_numbers(update: Update, context: ContextTypes.DEFAUL
         [InlineKeyboardButton("◀️ К рассылке", callback_data=f'broadcast_detail_{broadcast_id}'),
          InlineKeyboardButton("📋 К списку", callback_data='admin_broadcasts_list')]
     ]
-    await update.message.reply_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
     return True
 
 async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1363,12 +1409,14 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📢 Начинаю рассылку для {len(users)} пользователей...")
     successful = 0
     failed = 0
+    safe_text = escape_markdown_v2(broadcast_text)
     for uid in users:
         try:
             await context.bot.send_message(
                 chat_id=uid,
-                text=f"📢 РАССЫЛКА КЛАНА:\n\n{broadcast_text}\n\nВыбери свой вариант:",
-                reply_markup=reply_markup
+                text=f"📢 РАССЫЛКА КЛАНА:\n\n{safe_text}\n\nВыбери свой вариант:",
+                reply_markup=reply_markup,
+                parse_mode='MarkdownV2'
             )
             successful += 1
         except Exception as e:
@@ -1378,7 +1426,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats_message = await context.bot.send_message(
         chat_id=user_id,
         text=stats_text,
-        reply_markup=get_stats_keyboard(broadcast_id)
+        reply_markup=get_stats_keyboard(broadcast_id),
+        parse_mode='MarkdownV2'
     )
     save_stats_message(broadcast_id, user_id, stats_message.message_id)
     await update.message.reply_text(f"✅ Рассылка завершена. Успешно: {successful}, Ошибок: {failed}")
@@ -1415,7 +1464,7 @@ async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += f"🎮 Ник в игре: **{safe_nickname}**\n"
     text += f"📊 Посещено мероприятий: **{attended}**\n"
 
-    await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id))
+    await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='MarkdownV2')
 
 # ========================== ОСНОВНОЙ CALLBACK-ОБРАБОТЧИК ==========================
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1526,9 +1575,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text = f"<b>👥 Пользователи ({total})</b> - Страница {page}\n\n"
                 for i, (first_name, username, nickname, verified_at) in enumerate(users, offset + 1):
                     name = nickname or first_name or "Unknown"
-                    # Экранируем все поля для MarkdownV2 (здесь мы используем HTML, но экранирование не нужно, оставляем для единообразия)
-                    safe_name = escape_markdown_v2(name)
-                    safe_username = escape_markdown_v2(username) if username else None
+                    safe_name = html.escape(name)
+                    safe_username = html.escape(username) if username else None
                     line = f"{i}. 👤 {safe_name}"
                     if safe_username:
                         line += f" (@{safe_username})"
@@ -1689,7 +1737,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         broadcast_id = callback_data.replace('refresh_stats_', '')
         stats_text = get_formatted_stats(broadcast_id)
         try:
-            await query.edit_message_text(stats_text, reply_markup=get_stats_keyboard(broadcast_id))
+            await query.edit_message_text(stats_text, reply_markup=get_stats_keyboard(broadcast_id), parse_mode='MarkdownV2')
             await query.answer("✅ Статистика обновлена!")
         except Exception as e:
             if "Message is not modified" in str(e):
@@ -1709,11 +1757,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_ignored_list(update, context, broadcast_id)
         return
 
+    if callback_data.startswith('download_ignored_'):
+        broadcast_id = callback_data.replace('download_ignored_', '')
+        await download_ignored_list(update, context, broadcast_id)
+        return
+
     if callback_data.startswith('back_to_stats_'):
         await query.answer()
         broadcast_id = callback_data.replace('back_to_stats_', '')
         stats_text = get_formatted_stats(broadcast_id)
-        await query.edit_message_text(stats_text, reply_markup=get_stats_keyboard(broadcast_id))
+        await query.edit_message_text(stats_text, reply_markup=get_stats_keyboard(broadcast_id), parse_mode='MarkdownV2')
         return
 
     if callback_data.startswith('delete_broadcast_'):
@@ -1774,7 +1827,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         stats_message = await context.bot.send_message(
             chat_id=user.id,
             text=stats_text,
-            reply_markup=get_stats_keyboard(broadcast_id)
+            reply_markup=get_stats_keyboard(broadcast_id),
+            parse_mode='MarkdownV2'
         )
         save_stats_message(broadcast_id, user.id, stats_message.message_id)
         context.user_data.pop('broadcast_text', None)
@@ -1966,14 +2020,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=admin,
                     message_id=stats_msg_id,
                     text=new_stats_text,
-                    reply_markup=get_stats_keyboard(broadcast_id)
+                    reply_markup=get_stats_keyboard(broadcast_id),
+                    parse_mode='MarkdownV2'
                 )
                 logger.info(f"Stats updated for broadcast {broadcast_id}")
             else:
                 new_stats_text = get_formatted_stats(broadcast_id)
                 stats_message = await context.bot.send_message(
                     chat_id=admin,
-                    text=new_stats_text
+                    text=new_stats_text,
+                    parse_mode='MarkdownV2'
                 )
                 save_stats_message(broadcast_id, admin, stats_message.message_id)
         except Exception as e:
@@ -2005,7 +2061,8 @@ async def handle_nickname(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ Верификация успешна!\n\n"
         f"Твой ник в игре: **{nickname}**\n"
-        f"Теперь ты будешь получать все важные объявления клана."
+        f"Теперь ты будешь получать все важные объявления клана.",
+        parse_mode='MarkdownV2'
     )
     for admin in ADMIN_IDS:
         try:
@@ -2023,83 +2080,34 @@ async def handle_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TY
     logger.info("=== HANDLE BROADCAST TEXT ===")
     user = update.effective_user
 
-    if context.user_data.get('awaiting_broadcast_fast'):
+    # Удаляем неиспользуемую ветку awaiting_broadcast_fast
+    if context.user_data.get('awaiting_broadcast'):
         if user.id not in ADMIN_IDS:
-            context.user_data.pop('awaiting_broadcast_fast', None)
-            return False
+            context.user_data['awaiting_broadcast'] = False
+            await update.message.reply_text("❌ У тебя нет прав на рассылку.")
+            return True
         text = update.message.text.strip()
         if text.lower() == '/cancel':
-            context.user_data.pop('awaiting_broadcast_fast', None)
+            context.user_data['awaiting_broadcast'] = False
             await update.message.reply_text("❌ Создание рассылки отменено.", reply_markup=get_admin_keyboard())
             return True
         if len(text) < 2:
             await update.message.reply_text("❌ Текст слишком короткий. Попробуй еще раз или отправь /cancel")
             return True
-        broadcast_id = str(uuid.uuid4())[:8]
-        save_broadcast_with_params(broadcast_id, text, 0, None)
-        kb = [[InlineKeyboardButton("✅", callback_data=f'going_{broadcast_id}'),
-               InlineKeyboardButton("❌", callback_data=f'not_going_{broadcast_id}')]]
-        markup = InlineKeyboardMarkup(kb)
-        users = get_all_users()
-        if not users:
-            await update.message.reply_text("❌ В базе нет верифицированных пользователей.")
-            return True
-        await update.message.reply_text(f"📢 Начинаю рассылку для {len(users)} пользователей...")
-        successful = 0
-        failed = 0
-        safe_text = escape_markdown_v2(text)
-        for uid in users:
-            try:
-                await context.bot.send_message(
-                    chat_id=uid,
-                    text=f"📢 **НОВАЯ РАССЫЛКА КЛАНА**\n\n{safe_text}\n\nВыбери свой вариант:",
-                    reply_markup=markup,
-                    parse_mode='MarkdownV2'
-                )
-                successful += 1
-            except Exception as e:
-                logger.error(f"Failed to send to {uid}: {e}")
-                failed += 1
-        stats_text = get_formatted_stats(broadcast_id)
-        stats_msg = await context.bot.send_message(
-            chat_id=user.id,
-            text=stats_text,
-            reply_markup=get_stats_keyboard(broadcast_id)
-        )
-        save_stats_message(broadcast_id, user.id, stats_msg.message_id)
-        context.user_data.pop('awaiting_broadcast_fast', None)
+        context.user_data['broadcast_text'] = text
+        context.user_data['awaiting_broadcast'] = False
+        kb = [[InlineKeyboardButton("✅ Отправить", callback_data='confirm_broadcast'),
+               InlineKeyboardButton("❌ Отмена", callback_data='cancel_broadcast')]]
         await update.message.reply_text(
-            f"✅ Рассылка завершена. Успешно: {successful}, Ошибок: {failed}",
-            reply_markup=get_admin_keyboard()
+            f"📢 **Подтверждение рассылки**\n\n"
+            f"Текст:\n```\n{text}\n```\n\n"
+            f"Отправить всем верифицированным пользователям?",
+            reply_markup=InlineKeyboardMarkup(kb),
+            parse_mode='MarkdownV2'
         )
         return True
 
-    if not context.user_data.get('awaiting_broadcast'):
-        return False
-    if user.id not in ADMIN_IDS:
-        context.user_data['awaiting_broadcast'] = False
-        await update.message.reply_text("❌ У тебя нет прав на рассылку.")
-        return True
-    text = update.message.text.strip()
-    if text.lower() == '/cancel':
-        context.user_data['awaiting_broadcast'] = False
-        await update.message.reply_text("❌ Создание рассылки отменено.", reply_markup=get_admin_keyboard())
-        return True
-    if len(text) < 2:
-        await update.message.reply_text("❌ Текст слишком короткий. Попробуй еще раз или отправь /cancel")
-        return True
-    context.user_data['broadcast_text'] = text
-    context.user_data['awaiting_broadcast'] = False
-    kb = [[InlineKeyboardButton("✅ Отправить", callback_data='confirm_broadcast'),
-           InlineKeyboardButton("❌ Отмена", callback_data='cancel_broadcast')]]
-    await update.message.reply_text(
-        f"📢 **Подтверждение рассылки**\n\n"
-        f"Текст:\n```\n{text}\n```\n\n"
-        f"Отправить всем верифицированным пользователям?",
-        reply_markup=InlineKeyboardMarkup(kb),
-        parse_mode='MarkdownV2'
-    )
-    return True
+    return False
 
 async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("=== HANDLE ALL TEXT ===")
@@ -2223,7 +2231,8 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             stats_msg = await context.bot.send_message(
                 chat_id=user.id,
                 text=stats_text,
-                reply_markup=get_stats_keyboard(broadcast_id)
+                reply_markup=get_stats_keyboard(broadcast_id),
+                parse_mode='MarkdownV2'
             )
             save_stats_message(broadcast_id, user.id, stats_msg.message_id)
 
@@ -2271,6 +2280,7 @@ async def my_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYPE,
         info = get_broadcast_info(bid)
         if info:
             preview = info['text'][:30] + "..." if info['text'] and len(info['text']) > 30 else (info['text'] or "Нет текста")
+            preview = escape_markdown_v2(preview)
             date_str = info['created_at'][:16] if info['created_at'] else "неизвестно"
             text += f"{i}. `{bid}`\n   📅 {date_str}\n   📝 {preview}\n\n"
         else:
