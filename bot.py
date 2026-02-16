@@ -1,6 +1,7 @@
 import logging
 import sqlite3
 import uuid
+import html
 import os
 from datetime import datetime, timedelta
 
@@ -645,6 +646,7 @@ def get_my_broadcasts_keyboard(broadcasts, page, total_pages):
 
 # ========================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ-ОБРАБОТЧИКИ ==========================
 async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
+    """Показывает список проигнорировавших рассылку."""
     query = update.callback_query
     conn = get_connection()
     cur = conn.cursor()
@@ -662,8 +664,9 @@ async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     for uid, username, first_name, nickname in all_users:
         if uid not in voted_users:
             display_name = nickname or first_name or "Unknown"
-            safe_display_name = escape_markdown_v2(display_name)
-            safe_username = escape_markdown_v2(username) if username else None
+            # Экранируем для HTML
+            safe_display_name = html.escape(display_name)
+            safe_username = html.escape(username) if username else None
             display = f"👤 {safe_display_name}" + (f" (@{safe_username})" if safe_username else "")
             ignored_list.append(display)
 
@@ -675,7 +678,7 @@ async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await query.answer("✅ Все пользователи проголосовали!", show_alert=True)
         return
 
-    text = f"📋 **Проигнорировали рассылку** `{broadcast_id}`\n"
+    text = f"<b>📋 Проигнорировали рассылку</b> <code>{broadcast_id}</code>\n"
     text += f"📊 Всего: {total} | Проголосовало: {voted} | Игнор: {ignored}\n\n"
 
     if len(ignored_list) <= 10:
@@ -684,7 +687,7 @@ async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         markup = InlineKeyboardMarkup([[
             InlineKeyboardButton("◀️ Назад к статистике", callback_data=f'back_to_stats_{broadcast_id}')
         ]])
-        await query.edit_message_text(text, reply_markup=markup, parse_mode='MarkdownV2')
+        await query.edit_message_text(text, reply_markup=markup, parse_mode='HTML')
     else:
         for user in ignored_list[:10]:
             text += f"{user}\n"
@@ -693,7 +696,7 @@ async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             [InlineKeyboardButton("📥 Скачать полный список", callback_data=f'download_ignored_{broadcast_id}')],
             [InlineKeyboardButton("◀️ Назад к статистике", callback_data=f'back_to_stats_{broadcast_id}')]
         ]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     await query.answer()
 
 async def show_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
