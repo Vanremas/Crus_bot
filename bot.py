@@ -825,15 +825,15 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     text = f"📢 **{broadcast_text}**\n"
     text += f"🆔 `{broadcast_id}`\n"
     text += f"📅 {created_at}\n\n"
-    text += f"✅ ** ({len(going)}):**\n"
+    text += f"✅ ** \\({len(going)}\\):**\n"
     for i, user in enumerate(going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-    text += f"❌ ** ({len(not_going)}):**\n"
+    text += f"❌ ** \\({len(not_going)}\\):**\n"
     for i, user in enumerate(not_going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-    text += f"⚠️ **Проигнорировали ({len(ignored)}):**\n"
+text += f"⚠️ **Проигнорировали \\({len(ignored)}\\):**\n"
     for i, user in enumerate(ignored, 1):
         text += f"{i}. {user}\n"
 
