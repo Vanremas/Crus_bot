@@ -1517,7 +1517,7 @@ async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += f"🎮 Ник в игре: **{nickname}**\n"
     text += f"📊 Посещено мероприятий: **{attended}**\n"
 
-    await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='Markdown')
+    await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id))
 
 
 # ========================== ОСНОВНОЙ CALLBACK-ОБРАБОТЧИК ==========================
