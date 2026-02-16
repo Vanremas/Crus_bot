@@ -15,20 +15,18 @@ from telegram.ext import (
 )
 
 # ========================== КОНСТАНТЫ И НАСТРОЙКИ ==========================
-# Путь к БД: на Railway используем /data, иначе локально текущая папка
 if os.environ.get('RAILWAY_ENVIRONMENT') or os.path.exists('/railway'):
     DB_PATH = '/data/clanbot.db'
     os.makedirs('/data', exist_ok=True)
 else:
     DB_PATH = 'clanbot.db'
 
-# Токен обязательно задаём через переменную окружения
 TOKEN = os.environ.get('TOKEN') or '8235761382:AAGil59hWQ_fcTefFAYqohFcVm6Lw9eu6oM'
 if not TOKEN:
     raise ValueError("❌ Переменная окружения TOKEN не задана!")
 
 CLAN_CHAT_ID = -1003378716036
-ADMIN_IDS = [906717241]  # можно дополнительно вынести в переменные окружения
+ADMIN_IDS = [906717241]
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -41,7 +39,6 @@ def escape_markdown_v2(text):
     """Экранирует спецсимволы MarkdownV2 в тексте."""
     if not text:
         return text
-    # Спецсимволы: _ * [ ] ( ) ~ ` > # + - = | { } . !
     special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
     for char in special_chars:
         text = text.replace(char, '\\' + char)
@@ -49,15 +46,12 @@ def escape_markdown_v2(text):
 
 # ========================== РАБОТА С БАЗОЙ ДАННЫХ ==========================
 def get_connection():
-    """Возвращает соединение с SQLite, используя правильный путь к БД."""
     return sqlite3.connect(DB_PATH)
 
 def init_db():
-    """Создаёт все необходимые таблицы и добавляет недостающие колонки."""
     conn = get_connection()
     cur = conn.cursor()
 
-    # Таблица пользователей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -72,7 +66,6 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
-    # Таблица голосов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,7 +77,6 @@ def init_db():
         )
     ''')
 
-    # Таблица для хранения ID сообщений со статистикой (для админа)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS stats_messages (
             broadcast_id TEXT PRIMARY KEY,
@@ -94,7 +86,6 @@ def init_db():
         )
     ''')
 
-    # Таблица текстов рассылок (с доп. параметрами)
     cur.execute('''
         CREATE TABLE IF NOT EXISTS broadcast_texts (
             broadcast_id TEXT PRIMARY KEY,
@@ -103,7 +94,6 @@ def init_db():
         )
     ''')
 
-    # Таблица отметок о присутствии
     cur.execute('''
         CREATE TABLE IF NOT EXISTS user_activity (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,7 +105,6 @@ def init_db():
         )
     ''')
 
-    # Таблица агрегированной статистики пользователей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS user_stats (
             user_id INTEGER PRIMARY KEY,
@@ -126,7 +115,6 @@ def init_db():
         )
     ''')
 
-    # ----- НОВАЯ ТАБЛИЦА для отслеживания смены ника -----
     cur.execute('''
         CREATE TABLE IF NOT EXISTS user_nickname_changes (
             user_id INTEGER PRIMARY KEY,
@@ -134,7 +122,6 @@ def init_db():
         )
     ''')
 
-    # Добавляем новые поля в broadcast_texts (если ещё нет)
     for col in [
         ('cooldown_minutes', 'INTEGER DEFAULT 0'),
         ('event_time', 'TEXT'),
@@ -149,10 +136,8 @@ def init_db():
     conn.commit()
     conn.close()
 
-
-# ---------- Функции для работы с пользовательской статистикой и ником ----------
+# ---------- Функции для работы с пользователями ----------
 def get_user_nickname(user_id):
-    """Возвращает ник пользователя или None."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT nickname FROM users WHERE user_id = ?', (user_id,))
@@ -160,18 +145,14 @@ def get_user_nickname(user_id):
     conn.close()
     return result[0] if result else None
 
-
 def update_user_nickname(user_id, new_nickname):
-    """Обновляет ник пользователя."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('UPDATE users SET nickname = ? WHERE user_id = ?', (new_nickname, user_id))
     conn.commit()
     conn.close()
 
-
 def get_last_nickname_change(user_id):
-    """Возвращает время последней смены ника или None."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT last_change FROM user_nickname_changes WHERE user_id = ?', (user_id,))
@@ -179,9 +160,7 @@ def get_last_nickname_change(user_id):
     conn.close()
     return result[0] if result else None
 
-
 def set_last_nickname_change(user_id, timestamp):
-    """Устанавливает время последней смены ника."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -191,12 +170,7 @@ def set_last_nickname_change(user_id, timestamp):
     conn.commit()
     conn.close()
 
-
 def can_change_nickname(user_id):
-    """
-    Проверяет, может ли пользователь сменить ник (прошло ли 24 часа с последней смены).
-    Возвращает (можно_ли, осталось_секунд).
-    """
     last = get_last_nickname_change(user_id)
     if not last:
         return True, 0
@@ -212,9 +186,7 @@ def can_change_nickname(user_id):
     except:
         return True, 0
 
-
 def get_user_attended_count(user_id):
-    """Возвращает количество посещённых событий (attended_events)."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT attended_events FROM user_stats WHERE user_id = ?', (user_id,))
@@ -222,12 +194,7 @@ def get_user_attended_count(user_id):
     conn.close()
     return result[0] if result else 0
 
-
 def get_user_broadcasts(user_id):
-    """
-    Возвращает список ID рассылок, в которых пользователь участвовал
-    (голосовал или отмечен). Сортировка по убыванию времени последнего действия.
-    """
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -244,9 +211,7 @@ def get_user_broadcasts(user_id):
     conn.close()
     return [row[0] for row in rows]
 
-
 def get_broadcast_info(broadcast_id):
-    """Возвращает (текст, created_at, event_time) для рассылки."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT text, created_at, event_time FROM broadcast_texts WHERE broadcast_id = ?', (broadcast_id,))
@@ -256,13 +221,7 @@ def get_broadcast_info(broadcast_id):
         return {'text': row[0], 'created_at': row[1], 'event_time': row[2]}
     return None
 
-
 def get_user_choice_and_attendance(user_id, broadcast_id):
-    """
-    Возвращает (choice, attended) для пользователя в данной рассылке.
-    choice может быть 'going', 'not_going' или None.
-    attended – 0/1.
-    """
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT choice FROM votes WHERE user_id = ? AND broadcast_id = ?', (user_id, broadcast_id))
@@ -274,10 +233,8 @@ def get_user_choice_and_attendance(user_id, broadcast_id):
     conn.close()
     return choice, attended
 
-
 # ---------- Остальные функции базы данных ----------
 def save_vote(user_id, broadcast_id, choice):
-    """Сохраняет или обновляет голос пользователя."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -287,9 +244,7 @@ def save_vote(user_id, broadcast_id, choice):
     conn.commit()
     conn.close()
 
-
 def save_broadcast_text(broadcast_id, text):
-    """Сохраняет только текст рассылки (без параметров). Используется в старом методе."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -300,9 +255,7 @@ def save_broadcast_text(broadcast_id, text):
     conn.close()
     logger.info(f"Текст рассылки {broadcast_id} сохранён в БД: {text}")
 
-
 def get_broadcast_text(broadcast_id):
-    """Возвращает текст рассылки или None, если рассылка не найдена."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT text FROM broadcast_texts WHERE broadcast_id = ?', (broadcast_id,))
@@ -310,9 +263,7 @@ def get_broadcast_text(broadcast_id):
     conn.close()
     return result[0] if result else None
 
-
 def update_user_attendance(user_id, broadcast_id, attended):
-    """Отмечает присутствие пользователя на событии."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -323,12 +274,9 @@ def update_user_attendance(user_id, broadcast_id, attended):
     _update_user_stats(user_id)
     conn.close()
 
-
 def _update_user_stats(user_id):
-    """Пересчитывает статистику пользователя (внутренняя)."""
     conn = get_connection()
     cur = conn.cursor()
-    # Все уникальные рассылки, где пользователь либо голосовал, либо отмечен
     cur.execute('''
         SELECT DISTINCT broadcast_id FROM (
             SELECT broadcast_id FROM votes WHERE user_id = ?
@@ -337,7 +285,6 @@ def _update_user_stats(user_id):
         )
     ''', (user_id, user_id))
     total_events = len(cur.fetchall())
-    # Количество отметок присутствия
     cur.execute('SELECT COUNT(*) FROM user_activity WHERE user_id = ? AND attended = 1', (user_id,))
     attended_events = cur.fetchone()[0] or 0
     attendance_percent = (attended_events / total_events * 100) if total_events > 0 else 0
@@ -349,9 +296,7 @@ def _update_user_stats(user_id):
     conn.commit()
     conn.close()
 
-
 def recalc_all_stats():
-    """Пересчитывает статистику для всех активных пользователей."""
     logger.info("Начинаю пересчёт статистики...")
     conn = get_connection()
     cur = conn.cursor()
@@ -369,9 +314,7 @@ def recalc_all_stats():
     logger.info(f"Статистика пересчитана для {len(users)} пользователей")
     return len(users)
 
-
 def get_user_vote(user_id, broadcast_id):
-    """Возвращает выбор пользователя в данной рассылке или None."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT choice FROM votes WHERE user_id = ? AND broadcast_id = ?', (user_id, broadcast_id))
@@ -379,9 +322,7 @@ def get_user_vote(user_id, broadcast_id):
     conn.close()
     return result[0] if result else None
 
-
 def get_vote_stats(broadcast_id):
-    """Возвращает словарь с количеством голосов 'going' и 'not_going'."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT choice, COUNT(*) FROM votes WHERE broadcast_id = ? GROUP BY choice', (broadcast_id,))
@@ -395,9 +336,7 @@ def get_vote_stats(broadcast_id):
             stats['not_going'] = count
     return stats
 
-
 def get_formatted_stats(broadcast_id):
-    """Формирует текст статистики для данной рассылки."""
     conn = get_connection()
     cur = conn.cursor()
 
@@ -483,7 +422,6 @@ def get_formatted_stats(broadcast_id):
     return text
 
 def add_user(user_id, username, first_name, nickname):
-    """Добавляет пользователя в таблицу users."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -493,18 +431,14 @@ def add_user(user_id, username, first_name, nickname):
     conn.commit()
     conn.close()
 
-
 def remove_user(user_id):
-    """Удаляет пользователя из таблицы users."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
 
-
 def get_all_users():
-    """Возвращает список всех верифицированных user_id."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT user_id FROM users")
@@ -512,9 +446,7 @@ def get_all_users():
     conn.close()
     return [uid for (uid,) in users]
 
-
 def is_user_verified(user_id):
-    """Проверяет, есть ли пользователь в таблице users."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
@@ -522,9 +454,7 @@ def is_user_verified(user_id):
     conn.close()
     return result is not None
 
-
 def save_broadcast_with_params(broadcast_id, text, cooldown_minutes, event_time):
-    """Сохраняет рассылку с дополнительными параметрами."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -536,9 +466,7 @@ def save_broadcast_with_params(broadcast_id, text, cooldown_minutes, event_time)
     conn.close()
     logger.info(f"Текст рассылки {broadcast_id} сохранён с параметрами: cooldown={cooldown_minutes}, event_time={event_time}")
 
-
 def get_broadcast_cooldown(broadcast_id):
-    """Возвращает кулдаун для рассылки."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT cooldown_minutes FROM broadcast_texts WHERE broadcast_id = ?', (broadcast_id,))
@@ -546,9 +474,7 @@ def get_broadcast_cooldown(broadcast_id):
     conn.close()
     return result[0] if result else 0
 
-
 def get_broadcast_event_time(broadcast_id):
-    """Возвращает время события для рассылки."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT event_time FROM broadcast_texts WHERE broadcast_id = ?', (broadcast_id,))
@@ -556,21 +482,14 @@ def get_broadcast_event_time(broadcast_id):
     conn.close()
     return result[0] if result else None
 
-
 def mark_reminder_sent(broadcast_id):
-    """Отмечает, что напоминание о событии отправлено."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('UPDATE broadcast_texts SET reminder_sent = 1 WHERE broadcast_id = ?', (broadcast_id,))
     conn.commit()
     conn.close()
 
-
 def can_change_vote(user_id, broadcast_id, cooldown_minutes):
-    """
-    Проверяет, может ли пользователь изменить голос с учётом кулдауна.
-    Возвращает (можно_ли, осталось_минут).
-    """
     if cooldown_minutes == 0:
         return True, 0
 
@@ -599,18 +518,7 @@ def can_change_vote(user_id, broadcast_id, cooldown_minutes):
     except:
         return True, 0
 
-
 def parse_event_time(time_input):
-    """
-    Парсит введённое пользователем время события.
-    Возможные форматы:
-        '0'                 → None (без времени)
-        '+2'                → через 2 часа от текущего момента
-        '20:00'             → сегодня в 20:00 (если уже прошло, то завтра)
-        '15.03.2024 18:30'  → конкретная дата и время
-        '15.03.2024'        → конкретная дата, 00:00
-    Возвращает строку ISO или False при ошибке.
-    """
     time_input = time_input.strip()
     if time_input == '0':
         return None
@@ -644,9 +552,7 @@ def parse_event_time(time_input):
         except:
             return False
 
-
 def save_stats_message(broadcast_id, admin_id, message_id):
-    """Сохраняет ID сообщения со статистикой для последующего обновления."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('''
@@ -657,9 +563,7 @@ def save_stats_message(broadcast_id, admin_id, message_id):
     conn.close()
     logger.info(f"Saved stats message {message_id} for broadcast {broadcast_id} in DB")
 
-
 def get_stats_message(broadcast_id):
-    """Возвращает ID сообщения со статистикой для рассылки."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT message_id FROM stats_messages WHERE broadcast_id = ?', (broadcast_id,))
@@ -667,12 +571,10 @@ def get_stats_message(broadcast_id):
     conn.close()
     return result[0] if result else None
 
-
 # ========================== КЛАВИАТУРЫ ==========================
 def get_verify_keyboard():
     keyboard = [[InlineKeyboardButton("✅ Верифицироваться", callback_data='start_verify')]]
     return InlineKeyboardMarkup(keyboard)
-
 
 def get_admin_keyboard():
     keyboard = [
@@ -692,7 +594,6 @@ def get_admin_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-
 def get_stats_keyboard(broadcast_id):
     logger.info(f"Функция get_stats_keyboard вызвана для {broadcast_id}")
     keyboard = [
@@ -710,9 +611,7 @@ def get_stats_keyboard(broadcast_id):
     ]
     return InlineKeyboardMarkup(keyboard)
 
-
 def get_me_keyboard(user_id):
-    """Клавиатура для профиля /me."""
     can_change, remaining = can_change_nickname(user_id)
     buttons = []
     if can_change:
@@ -725,9 +624,7 @@ def get_me_keyboard(user_id):
     buttons.append([InlineKeyboardButton("📋 Мои рассылки", callback_data='my_broadcasts')])
     return InlineKeyboardMarkup(buttons)
 
-
 def get_my_broadcasts_keyboard(broadcasts, page, total_pages):
-    """Клавиатура для списка моих рассылок (пагинация)."""
     keyboard = []
     per_page = 5
     start = (page - 1) * per_page
@@ -746,10 +643,8 @@ def get_my_broadcasts_keyboard(broadcasts, page, total_pages):
     keyboard.append([InlineKeyboardButton("◀️ Назад в профиль", callback_data='back_to_me')])
     return InlineKeyboardMarkup(keyboard)
 
-
 # ========================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ-ОБРАБОТЧИКИ ==========================
 async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
-    """Показывает список проигнорировавших рассылку."""
     query = update.callback_query
     conn = get_connection()
     cur = conn.cursor()
@@ -767,7 +662,6 @@ async def show_ignored_list(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     for uid, username, first_name, nickname in all_users:
         if uid not in voted_users:
             display_name = nickname or first_name or "Unknown"
-            # Экранируем имя
             safe_display_name = escape_markdown_v2(display_name)
             safe_username = escape_markdown_v2(username) if username else None
             display = f"👤 {safe_display_name}" + (f" (@{safe_username})" if safe_username else "")
@@ -836,12 +730,12 @@ async def show_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     total_pages = (total - 1) // per_page + 1
-    text = f"📋 **Архив рассылок** (стр. {page}/{total_pages})\n\n"
+    text = f"<b>📋 Архив рассылок</b> (стр. {page}/{total_pages})\n\n"
 
     for i, (bid, created_at, preview, votes_cnt) in enumerate(broadcasts, 1):
         date_str = created_at[:16] if created_at else "неизвестно"
         preview_text = (preview[:30] + "...") if preview and len(preview) > 30 else (preview or "Нет текста")
-        text += f"{i}. `{bid}`\n"
+        text += f"{i}. <code>{bid}</code>\n"
         text += f"   📅 {date_str}\n"
         text += f"   📝 {preview_text}\n"
         text += f"   📊 Голосов: {votes_cnt}\n\n"
@@ -864,19 +758,16 @@ async def show_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYP
         InlineKeyboardButton("🗑 Удалить все", callback_data='delete_all_broadcasts')
     ])
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     await query.answer()
 
-
 async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
-    """Показывает детальную информацию о рассылке (админский)."""
     query = update.callback_query
     conn = get_connection()
     cur = conn.cursor()
     cur.execute('SELECT text FROM broadcast_texts WHERE broadcast_id = ?', (broadcast_id,))
     text_result = cur.fetchone()
     broadcast_text = text_result[0] if text_result else "Текст не найден"
-    # Экранируем текст рассылки
     broadcast_text = escape_markdown_v2(broadcast_text)
     
     cur.execute('SELECT created_at FROM stats_messages WHERE broadcast_id = ?', (broadcast_id,))
@@ -909,7 +800,6 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     for uid, choice, nick, username, attended in votes:
         voted_ids.add(uid)
         status = "🟢" if attended else "🔴"
-        # Экранируем ник
         safe_nick = escape_markdown_v2(nick) if nick else 'Без ника'
         safe_username = escape_markdown_v2(username) if username else None
         display = f"{status} {safe_nick}" + (f" | @{safe_username}" if safe_username else "")
@@ -922,7 +812,6 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     for uid, nick, username, attended in all_users:
         if uid not in voted_ids:
             status = "🟢" if attended else "🔴"
-            # Экранируем ник
             safe_nick = escape_markdown_v2(nick) if nick else 'Без ника'
             safe_username = escape_markdown_v2(username) if username else None
             display = f"{status} {safe_nick}" + (f" | @{safe_username}" if safe_username else "")
@@ -953,7 +842,6 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
 
 async def mark_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
-    """Показывает интерфейс для отметки присутствия (с группировкой)."""
     query = update.callback_query
     conn = get_connection()
     cur = conn.cursor()
@@ -1033,7 +921,6 @@ async def mark_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, br
     await query.answer()
 
 async def enter_attendance_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
-    """Запрашивает ввод номеров для отметки присутствия."""
     query = update.callback_query
     conn = get_connection()
     cur = conn.cursor()
@@ -1103,7 +990,6 @@ async def enter_attendance_numbers(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
 async def handle_attendance_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает введённые номера для отметки присутствия."""
     logger.info("=== HANDLE ATTENDANCE NUMBERS ===")
     user = update.effective_user
     if user.id not in ADMIN_IDS:
@@ -1191,9 +1077,7 @@ async def handle_attendance_numbers(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard))
     return True
 
-
 async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает рейтинг активности пользователей (только количество посещений)."""
     query = update.callback_query
     conn = get_connection()
     cur = conn.cursor()
@@ -1214,7 +1098,6 @@ async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "🏆 **Рейтинг активности**\n\n"
     for i, (uid, nick, username, attended) in enumerate(stats, 1):
-        # Экранируем имя пользователя на всякий случай
         safe_nick = escape_markdown_v2(nick) if nick else f"ID {uid}"
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "📌"
         text += f"{medal} {i}. {safe_nick}\n"
@@ -1227,9 +1110,7 @@ async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
     await query.answer()
 
-
 async def delete_all_broadcasts(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Запрашивает подтверждение удаления всех рассылок."""
     query = update.callback_query
     keyboard = [
         [InlineKeyboardButton("✅ Да, удалить всё", callback_data='confirm_delete_all'),
@@ -1247,9 +1128,7 @@ async def delete_all_broadcasts(update: Update, context: ContextTypes.DEFAULT_TY
     )
     await query.answer()
 
-
 async def confirm_delete_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Подтверждение удаления всех рассылок (с уведомлением пользователей)."""
     query = update.callback_query
 
     conn = get_connection()
@@ -1281,9 +1160,7 @@ async def confirm_delete_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
         parse_mode='HTML'
     )
 
-
 async def delete_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
-    """Запрашивает подтверждение удаления конкретной рассылки."""
     query = update.callback_query
     keyboard = [
         [InlineKeyboardButton("✅ Да, удалить", callback_data=f'confirm_delete_{broadcast_id}'),
@@ -1298,14 +1175,11 @@ async def delete_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, b
     )
     await query.answer()
 
-
 async def confirm_delete_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
-    """Подтверждение удаления конкретной рассылки (с уведомлением пользователей)."""
     query = update.callback_query
     user_id = query.from_user.id
     try:
         broadcast_text = get_broadcast_text(broadcast_id) or "Без текста"
-        # Экранируем текст для отправки
         safe_text = escape_markdown_v2(broadcast_text)
 
         conn = get_connection()
@@ -1349,10 +1223,8 @@ async def confirm_delete_broadcast(update: Update, context: ContextTypes.DEFAULT
         logger.error(f"Error deleting broadcast {broadcast_id}: {e}")
         await query.answer("❌ Ошибка при удалении", show_alert=True)
 
-
-# ========================== ФОНОВЫЕ ЗАДАЧИ (ЧЕРЕЗ JOB QUEUE) ==========================
+# ========================== ФОНОВЫЕ ЗАДАЧИ ==========================
 async def send_reminder(context: ContextTypes.DEFAULT_TYPE, broadcast_id, text, event_time):
-    """Отправляет напоминание всем пользователям."""
     users = get_all_users()
     try:
         dt = datetime.fromisoformat(event_time)
@@ -1360,7 +1232,6 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, broadcast_id, text, 
     except:
         time_str = event_time
 
-    # Экранируем текст рассылки
     safe_text = escape_markdown_v2(text)
 
     for uid in users:
@@ -1386,9 +1257,7 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, broadcast_id, text, 
         except:
             pass
 
-
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
-    """Проверяет события, до которых осталось 30 минут, и отправляет напоминания."""
     conn = get_connection()
     cur = conn.cursor()
     now = datetime.now()
@@ -1406,9 +1275,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
         await send_reminder(context, bid, text, etime)
         mark_reminder_sent(bid)
 
-
 async def check_expired_events(context: ContextTypes.DEFAULT_TYPE):
-    """Проверяет события, которые уже начались, и отправляет уведомление о завершении голосования."""
     conn = get_connection()
     cur = conn.cursor()
     now = datetime.now()
@@ -1438,10 +1305,8 @@ async def check_expired_events(context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Event {bid} has started, notifications sent")
     conn.close()
 
-
 # ========================== ОБРАБОТЧИКИ КОМАНД ==========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Приветственное сообщение с кнопкой верификации."""
     keyboard = get_verify_keyboard()
     await update.message.reply_text(
         "Приветствую. Я бот-менеджер клана.\n\n"
@@ -1449,9 +1314,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=keyboard
     )
 
-
 async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старая команда верификации - перенаправляет на новый способ."""
     await update.message.reply_text(
         "<b>📱 Верификация теперь происходит по-новому!</b>\n\n"
         "Чтобы верифицироваться, нажми <b>/start</b> и используй кнопку <b>'✅ Верифицироваться'</b>.\n\n"
@@ -1459,9 +1322,7 @@ async def verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
 
-
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Открывает админ-панель."""
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
         await update.message.reply_text("❌ У тебя нет доступа к админ-панели.")
@@ -1473,9 +1334,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
 
-
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Старая команда для быстрой рассылки (оставлена для совместимости)."""
     logger.info("=== НАЧАЛО ФУНКЦИИ BROADCAST ===")
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
@@ -1520,9 +1379,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Рассылка завершена. Успешно: {successful}, Ошибок: {failed}")
     logger.info("=== КОНЕЦ ФУНКЦИИ BROADCAST ===")
 
-
 async def track_chat_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отслеживает выход участников из клан-чата и удаляет их из базы."""
     if update.effective_chat.id != CLAN_CHAT_ID:
         return
     if update.message and update.message.left_chat_member:
@@ -1540,16 +1397,13 @@ async def track_chat_members(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except:
                     pass
 
-
 async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /me – показывает профиль пользователя."""
     user = update.effective_user
     if not is_user_verified(user.id):
         await update.message.reply_text("❌ Ты ещё не верифицирован. Используй /start для верификации.")
         return
 
     nickname = get_user_nickname(user.id) or "Не указан"
-    # Экранируем ник на случай, если в будущем добавится parse_mode
     safe_nickname = escape_markdown_v2(nickname)
     attended = get_user_attended_count(user.id)
     text = f"👤 **Твой профиль**\n\n"
@@ -1558,10 +1412,8 @@ async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id))
 
-
 # ========================== ОСНОВНОЙ CALLBACK-ОБРАБОТЧИК ==========================
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает все нажатия на инлайн-кнопки."""
     query = update.callback_query
     user = query.from_user
     callback_data = query.data
@@ -1592,7 +1444,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await my_broadcast_detail(update, context, bid)
         return
     if callback_data == 'back_to_me':
-        # Возврат к профилю
         nickname = get_user_nickname(user.id) or "Не указан"
         safe_nickname = escape_markdown_v2(nickname)
         attended = get_user_attended_count(user.id)
@@ -1670,7 +1521,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text = f"<b>👥 Пользователи ({total})</b> - Страница {page}\n\n"
                 for i, (first_name, username, nickname, verified_at) in enumerate(users, offset + 1):
                     name = nickname or first_name or "Unknown"
-                    # Экранируем все поля для MarkdownV2
+                    # Экранируем все поля для MarkdownV2 (здесь мы используем HTML, но экранирование не нужно, оставляем для единообразия)
                     safe_name = escape_markdown_v2(name)
                     safe_username = escape_markdown_v2(username) if username else None
                     line = f"{i}. 👤 {safe_name}"
@@ -1688,7 +1539,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if nav:
                 keyboard.append(nav)
             keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='admin_back')])
-            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
             return
 
         if callback_data == 'admin_back':
@@ -1742,7 +1593,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cur.execute('DELETE FROM broadcast_texts')
             conn.commit()
             conn.close()
-            # Уведомляем пользователей
             users = get_all_users()
             for uid in users:
                 try:
@@ -2007,7 +1857,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    # Проверяем, существует ли рассылка (чтобы избежать фантомных голосований после удаления)
     broadcast_text = get_broadcast_text(broadcast_id)
     if broadcast_text is None:
         await query.answer(
@@ -2020,7 +1869,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Проверяем, не истекло ли время события
     event_time = get_broadcast_event_time(broadcast_id)
     if event_time:
         try:
@@ -2038,15 +1886,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    # Получаем текущий голос и кулдаун
     previous_vote = get_user_vote(user.id, broadcast_id)
     cooldown = get_broadcast_cooldown(broadcast_id)
 
-    # Проверка кулдауна при попытке изменить голос
     if previous_vote and previous_vote != action:
         can_change, remaining = can_change_vote(user.id, broadcast_id, cooldown)
         if not can_change:
-            # Склонение слова "минута"
             if remaining % 10 == 1 and remaining % 100 != 11:
                 minutes_text = "минуту"
             elif 2 <= remaining % 10 <= 4 and not (12 <= remaining % 100 <= 14):
@@ -2059,13 +1904,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-    # Сохраняем голос
     save_vote(user.id, broadcast_id, action)
 
-    # Получаем обновлённую статистику
     new_stats = get_vote_stats(broadcast_id)
 
-    # Формируем текст для пользователя
     choice_text = "✅" if action == 'going' else "❌"
     if previous_vote:
         old_choice = "✅" if previous_vote == 'going' else "❌"
@@ -2076,12 +1918,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cooldown > 0:
         user_text += f"\n\n⏱️ Менять голос можно раз в {cooldown} мин."
 
-    # Если событие ещё актуально, оставляем кнопку для смены
     if event_time:
         try:
             event_dt = datetime.fromisoformat(event_time)
             if event_dt > datetime.now():
-                # показываем противоположную кнопку
                 if action == 'going':
                     kb = [[InlineKeyboardButton("❌", callback_data=f'not_going_{broadcast_id}')]]
                 else:
@@ -2091,10 +1931,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 reply_markup = InlineKeyboardMarkup([])
         except:
-            # ошибка парсинга – не показываем кнопки
             reply_markup = InlineKeyboardMarkup([])
     else:
-        # без времени события – показываем кнопку
         if action == 'going':
             kb = [[InlineKeyboardButton("❌", callback_data=f'not_going_{broadcast_id}')]]
         else:
@@ -2113,7 +1951,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             logger.error(f"Error editing message: {e}")
 
-    # Обновляем статистику для админа
     logger.info(f"✅ Статистика изменилась! Новые значения: {new_stats}")
     for admin in ADMIN_IDS:
         try:
@@ -2138,10 +1975,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if "Message is not modified" not in str(e):
                 logger.error(f"Error updating stats: {e}")
 
-
 # ========================== ОБРАБОТЧИКИ ТЕКСТОВЫХ СООБЩЕНИЙ ==========================
 async def handle_nickname(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ввод ника при верификации."""
     user = update.effective_user
     if not context.user_data.get('awaiting_nickname'):
         return False
@@ -2179,13 +2014,10 @@ async def handle_nickname(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     return True
 
-
 async def handle_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает текст для быстрой рассылки (старый метод)."""
     logger.info("=== HANDLE BROADCAST TEXT ===")
     user = update.effective_user
 
-    # Обработка быстрой рассылки (если вдруг ещё используется)
     if context.user_data.get('awaiting_broadcast_fast'):
         if user.id not in ADMIN_IDS:
             context.user_data.pop('awaiting_broadcast_fast', None)
@@ -2237,7 +2069,6 @@ async def handle_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return True
 
-    # Старая логика для confirm_broadcast (с подтверждением)
     if not context.user_data.get('awaiting_broadcast'):
         return False
     if user.id not in ADMIN_IDS:
@@ -2265,23 +2096,19 @@ async def handle_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TY
     )
     return True
 
-
 async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Главный обработчик всех текстовых сообщений в личке."""
     logger.info("=== HANDLE ALL TEXT ===")
     logger.info(f"User data keys: {list(context.user_data.keys())}")
 
     user = update.effective_user
 
-    # -------------------- СМЕНА НИКА --------------------
     if context.user_data.get('awaiting_nickname_change'):
         if await handle_nickname_change(update, context):
             return
 
-    # -------------------- ПОШАГОВОЕ СОЗДАНИЕ РАССЫЛКИ (админ) --------------------
     if user.id in ADMIN_IDS:
         step = context.user_data.get('broadcast_step')
-        if step == 1:  # ожидаем текст
+        if step == 1:
             text = update.message.text.strip()
             if text.lower() == '/cancel':
                 context.user_data.pop('broadcast_step', None)
@@ -2301,7 +2128,7 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        if step == 2:  # ожидаем время
+        if step == 2:
             time_input = update.message.text.strip()
             if time_input.lower() == '/cancel':
                 context.user_data.pop('broadcast_step', None)
@@ -2331,7 +2158,7 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        if step == 3:  # ожидаем кулдаун, создаём рассылку
+        if step == 3:
             cooldown_input = update.message.text.strip()
             if cooldown_input.lower() == '/cancel':
                 context.user_data.pop('broadcast_step', None)
@@ -2395,7 +2222,6 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             save_stats_message(broadcast_id, user.id, stats_msg.message_id)
 
-            # Очищаем данные
             context.user_data.pop('broadcast_step', None)
             context.user_data.pop('broadcast_text', None)
             context.user_data.pop('event_time', None)
@@ -2406,7 +2232,6 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-    # -------------------- СТАНДАРТНЫЕ ОБРАБОТЧИКИ --------------------
     if await handle_attendance_numbers(update, context):
         logger.info("Handled by attendance_numbers")
         return
@@ -2419,10 +2244,8 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info("No handler processed the message")
 
-
-# ---------- НОВЫЕ ФУНКЦИИ ДЛЯ ПРОФИЛЯ (дополнительно) ----------
+# ---------- НОВЫЕ ФУНКЦИИ ДЛЯ ПРОФИЛЯ ----------
 async def my_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page=1):
-    """Показывает список рассылок, в которых участвовал пользователь."""
     query = update.callback_query
     user_id = query.from_user.id
 
@@ -2452,9 +2275,7 @@ async def my_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode='MarkdownV2')
     await query.answer()
 
-
 async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
-    """Показывает детали рассылки для пользователя (только его участие)."""
     query = update.callback_query
     user_id = query.from_user.id
 
@@ -2471,7 +2292,6 @@ async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE
     }.get(choice, '❓ Не голосовал')
     attended_text = "✅ Был отмечен" if attended else "❌ Не отмечен"
 
-    # Экранируем текст
     safe_text = escape_markdown_v2(info['text'])
 
     stats = get_vote_stats(broadcast_id)
@@ -2499,7 +2319,6 @@ async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
 async def change_nickname_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начинает процесс смены ника."""
     query = update.callback_query
     user_id = query.from_user.id
 
@@ -2517,9 +2336,7 @@ async def change_nickname_start(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['awaiting_nickname_change'] = True
     await query.answer()
 
-
 async def handle_nickname_change(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает ввод нового ника."""
     user = update.effective_user
     if not context.user_data.get('awaiting_nickname_change'):
         return False
@@ -2528,7 +2345,6 @@ async def handle_nickname_change(update: Update, context: ContextTypes.DEFAULT_T
     if new_nick.lower() == '/cancel':
         context.user_data.pop('awaiting_nickname_change', None)
         await update.message.reply_text("❌ Смена ника отменена.")
-        # Показываем профиль снова
         await me_command(update, context)
         return True
 
@@ -2536,24 +2352,20 @@ async def handle_nickname_change(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ Ник должен быть от 2 до 30 символов. Попробуй ещё раз:")
         return True
 
-    # Повторная проверка кулдауна (на всякий случай)
     can, _ = can_change_nickname(user.id)
     if not can:
         await update.message.reply_text("❌ Ты уже менял ник недавно. Подожди 24 часа.")
         context.user_data.pop('awaiting_nickname_change', None)
         return True
 
-    # Обновляем ник
     update_user_nickname(user.id, new_nick)
     set_last_nickname_change(user.id, datetime.now().isoformat())
     context.user_data.pop('awaiting_nickname_change', None)
 
     safe_new_nick = escape_markdown_v2(new_nick)
     await update.message.reply_text(f"✅ Ник успешно изменён на **{safe_new_nick}**!", parse_mode='MarkdownV2')
-    # Показываем обновлённый профиль
     await me_command(update, context)
     return True
-
 
 # ========================== ЗАПУСК БОТА ==========================
 def main():
@@ -2561,7 +2373,6 @@ def main():
     recalc_all_stats()
     application = Application.builder().token(TOKEN).build()
 
-    # Периодические задачи через JobQueue (интервал 60 секунд)
     job_queue = application.job_queue
     if job_queue:
         job_queue.run_repeating(check_reminders, interval=60, first=10)
@@ -2569,20 +2380,16 @@ def main():
     else:
         logger.warning("Job queue not available – reminders and expired events disabled")
 
-    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("verify", verify))
     application.add_handler(CommandHandler("broadcast", broadcast))
     application.add_handler(CommandHandler("me", me_command))
 
-    # Отслеживание выхода из чата
     application.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, track_chat_members))
 
-    # Инлайн-кнопки
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    # Текстовые сообщения в личке
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
         handle_all_text
@@ -2590,7 +2397,6 @@ def main():
 
     print("Бот запущен...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
 
 if __name__ == '__main__':
     main()
