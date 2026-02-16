@@ -833,7 +833,7 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     for i, user in enumerate(not_going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-text += f"⚠️ **Проигнорировали \\({len(ignored)}\\):**\n"
+    text += f"⚠️ **Проигнорировали \\({len(ignored)}\\):**\n"
     for i, user in enumerate(ignored, 1):
         text += f"{i}. {user}\n"
 
