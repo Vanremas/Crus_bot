@@ -23,7 +23,7 @@ else:
     DB_PATH = 'clanbot.db'
 
 # Токен обязательно задаём через переменную окружения
-TOKEN = os.environ.get('TOKEN')
+TOKEN = os.environ.get('TOKEN') or '8235761382:AAGil59hWQ_fcTefFAYqohFcVm6Lw9eu6oM'
 if not TOKEN:
     raise ValueError("❌ Переменная окружения TOKEN не задана!")
 
