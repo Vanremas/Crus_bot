@@ -2060,7 +2060,7 @@ async def handle_nickname(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['awaiting_nickname'] = False
     await update.message.reply_text(
         f"✅ Верификация успешна!\n\n"
-        f"Твой ник в игре: **{nickname}**\n"
+        f"Твой ник в игре: **{escape_markdown_v2(nickname)}**\n"
         f"Теперь ты будешь получать все важные объявления клана.",
         parse_mode='MarkdownV2'
     )
