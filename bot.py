@@ -819,12 +819,12 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     cur.execute('SELECT text FROM broadcast_texts WHERE broadcast_id = ?', (broadcast_id,))
     text_result = cur.fetchone()
     broadcast_text = text_result[0] if text_result else "Текст не найден"
-    broadcast_text = escape_markdown_v2(broadcast_text)
-    
+    safe_broadcast = html.escape(broadcast_text)
+
     cur.execute('SELECT created_at FROM stats_messages WHERE broadcast_id = ?', (broadcast_id,))
     date_result = cur.fetchone()
     created_at = date_result[0][:16] if date_result else "неизвестно"
-    created_at = escape_markdown_v2(created_at)
+    safe_bid = html.escape(broadcast_id)
 
     cur.execute('''
         SELECT v.user_id, v.choice, u.nickname, u.username, COALESCE(ua.attended, 0) as attended
@@ -848,13 +848,13 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     voted_ids = set()
     going = []
     not_going = []
-    
+
     for uid, choice, nick, username, attended in votes:
         voted_ids.add(uid)
         status = "🟢" if attended else "🔴"
-        safe_nick = escape_markdown_v2(nick) if nick else 'Без ника'
-        safe_username = escape_markdown_v2(username) if username else None
-        display = f"{status} {safe_nick}" + (f" | @{safe_username}" if safe_username else "")
+        safe_nick = html.escape(nick or 'Без ника')
+        safe_user = html.escape(username) if username else ""
+        display = f"{status} {safe_nick}" + (f" | @{safe_user}" if safe_user else "")
         if choice == 'going':
             going.append(display)
         else:
@@ -864,23 +864,23 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
     for uid, nick, username, attended in all_users:
         if uid not in voted_ids:
             status = "🟢" if attended else "🔴"
-            safe_nick = escape_markdown_v2(nick) if nick else 'Без ника'
-            safe_username = escape_markdown_v2(username) if username else None
-            display = f"{status} {safe_nick}" + (f" | @{safe_username}" if safe_username else "")
+            safe_nick = html.escape(nick or 'Без ника')
+            safe_user = html.escape(username) if username else ""
+            display = f"{status} {safe_nick}" + (f" | @{safe_user}" if safe_user else "")
             ignored.append(display)
 
-    text = f"📢 *{broadcast_text}*\n"  # Исправлено: одинарные звездочки
-    text += f"🆔 `{broadcast_id}`\n"
+    text = f"<b>📢 {safe_broadcast}</b>\n"
+    text += f"🆔 <code>{safe_bid}</code>\n"
     text += f"📅 {created_at}\n\n"
-    text += f"✅ *({len(going)}):*\n"  # Исправлено
+    text += f"✅ ({len(going)}):\n"
     for i, user in enumerate(going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-    text += f"❌ *({len(not_going)}):*\n"  # Исправлено
+    text += f"❌ ({len(not_going)}):\n"
     for i, user in enumerate(not_going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-    text += f"⚠️ *Проигнорировали ({len(ignored)}):*\n"  # Исправлено
+    text += f"⚠️ Проигнорировали ({len(ignored)}):\n"
     for i, user in enumerate(ignored, 1):
         text += f"{i}. {user}\n"
 
@@ -890,7 +890,7 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("◀️ Назад к списку", callback_data='admin_broadcasts_list'),
          InlineKeyboardButton("❌ Закрыть", callback_data='close_stats')]
     ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     await query.answer()
 
 async def mark_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
@@ -919,14 +919,13 @@ async def mark_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, br
         await query.answer("❌ В базе нет пользователей", show_alert=True)
         return
 
-    text = f"📝 *Отметка присутствия*\nРассылка: `{broadcast_id}`\n\n"  # Исправлено
+    safe_bid = html.escape(broadcast_id)
+    text = f"<b>📝 Отметка присутствия</b>\nРассылка: <code>{safe_bid}</code>\n\n"
     going, not_going, ignored = [], [], []
-    
+
     for uid, nick, username, choice, attended in all_users:
         status = "✅" if attended else "⬜"
-        safe_nick = escape_markdown_v2(nick) if nick else None
-        safe_username = escape_markdown_v2(username) if username else None
-        name = safe_nick or safe_username or f"ID {uid}"
+        name = html.escape(nick or username or f"ID {uid}")
         display = f"{status} {name}"
         if choice == 'going':
             going.append(display)
@@ -937,23 +936,23 @@ async def mark_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, br
 
     counter = 1
     user_map = {}
-    
+
     if going:
-        text += f"✅ *({len(going)}):*\n"  # Исправлено
+        text += f"✅ ({len(going)}):\n"
         for display in going:
             text += f"{counter}. {display}\n"
             user_map[str(counter)] = all_users[counter - 1][0]
             counter += 1
         text += "\n"
     if not_going:
-        text += f"❌ *({len(not_going)}):*\n"  # Исправлено
+        text += f"❌ ({len(not_going)}):\n"
         for display in not_going:
             text += f"{counter}. {display}\n"
             user_map[str(counter)] = all_users[counter - 1][0]
             counter += 1
         text += "\n"
     if ignored:
-        text += f"⚠️ *Проигнорировали ({len(ignored)}):*\n"  # Исправлено
+        text += f"⚠️ Проигнорировали ({len(ignored)}):\n"
         for display in ignored:
             text += f"{counter}. {display}\n"
             user_map[str(counter)] = all_users[counter - 1][0]
@@ -969,7 +968,7 @@ async def mark_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, br
         [InlineKeyboardButton("🔢 Ввести номера", callback_data=f'enter_numbers_{broadcast_id}'),
          InlineKeyboardButton("◀️ Назад", callback_data=f'broadcast_detail_{broadcast_id}')]
     ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     await query.answer()
 
 async def enter_attendance_numbers(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
@@ -994,14 +993,13 @@ async def enter_attendance_numbers(update: Update, context: ContextTypes.DEFAULT
     all_users = cur.fetchall()
     conn.close()
 
-    text = f"📝 *Отметка присутствия*\nРассылка: `{broadcast_id}`\n\n*Список пользователей:*\n\n"  # Исправлено
+    safe_bid = html.escape(broadcast_id)
+    text = f"<b>📝 Отметка присутствия</b>\nРассылка: <code>{safe_bid}</code>\n\n<b>Список пользователей:</b>\n\n"
     going, not_going, ignored = [], [], []
-    
+
     for uid, nick, username, choice, attended in all_users:
         status = "✅" if attended else "⬜"
-        safe_nick = escape_markdown_v2(nick) if nick else None
-        safe_username = escape_markdown_v2(username) if username else None
-        name = safe_nick or safe_username or f"ID {uid}"
+        name = html.escape(nick or username or f"ID {uid}")
         display = f"{status} {name}"
         if choice == 'going':
             going.append(display)
@@ -1012,32 +1010,33 @@ async def enter_attendance_numbers(update: Update, context: ContextTypes.DEFAULT
 
     counter = 1
     if going:
-        text += f"✅ *({len(going)}):*\n"  # Исправлено
+        text += f"✅ ({len(going)}):\n"
         for display in going:
-            text += f"`{counter}.` {display}\n"
+            text += f"{counter}. {display}\n"
             counter += 1
         text += "\n"
     if not_going:
-        text += f"❌ *({len(not_going)}):*\n"  # Исправлено
+        text += f"❌ ({len(not_going)}):\n"
         for display in not_going:
-            text += f"`{counter}.` {display}\n"
+            text += f"{counter}. {display}\n"
             counter += 1
         text += "\n"
     if ignored:
-        text += f"⚠️ *Проигнорировали ({len(ignored)}):*\n"  # Исправлено
+        text += f"⚠️ Проигнорировали ({len(ignored)}):\n"
         for display in ignored:
-            text += f"`{counter}.` {display}\n"
+            text += f"{counter}. {display}\n"
+            counter += 1
             counter += 1
         text += "\n"
 
-    text += f"*Всего пользователей:* {len(all_users)}\n\n"  # Исправлено
-    text += "Введи номера присутствовавших в формате:\n`1-5-8-3-9-13`\n\n"
+    text += f"<b>Всего пользователей:</b> {len(all_users)}\n\n"
+    text += "Введи номера присутствовавших в формате:\n<code>1-5-8-3-9-13</code>\n\n"
 
     keyboard = [
         [InlineKeyboardButton("◀️ Назад к рассылке", callback_data=f'broadcast_detail_{broadcast_id}')],
         [InlineKeyboardButton("❌ Закрыть", callback_data='close_stats')]
     ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     context.user_data['awaiting_attendance_numbers'] = broadcast_id
     await query.answer()
 
@@ -1106,7 +1105,7 @@ async def handle_attendance_numbers(update: Update, context: ContextTypes.DEFAUL
                 update_user_attendance(uid, broadcast_id, True)
                 marked += 1
                 name = nick or username or f"ID {uid}"
-                safe_name = escape_markdown_v2(name)
+                safe_name = html.escape(name)
                 marked_list.append(f"  {num}. {safe_name}")
             except Exception as e:
                 logger.error(f"Error marking attendance for user {uid}: {e}")
@@ -1115,7 +1114,8 @@ async def handle_attendance_numbers(update: Update, context: ContextTypes.DEFAUL
             not_found.append(str(num))
 
     context.user_data.pop('awaiting_attendance_numbers', None)
-    result_text = f"📊 *Результат отметки*\nРассылка: `{broadcast_id}`\n\n✅ Успешно отмечено: {marked}\n"  # Исправлено
+    safe_bid = html.escape(broadcast_id)
+    result_text = f"<b>📊 Результат отметки</b>\nРассылка: <code>{safe_bid}</code>\n\n✅ Успешно отмечено: {marked}\n"
     if marked_list:
         result_text += "Отмечены:\n" + "\n".join(marked_list) + "\n"
     if not_found:
@@ -1127,7 +1127,7 @@ async def handle_attendance_numbers(update: Update, context: ContextTypes.DEFAUL
         [InlineKeyboardButton("◀️ К рассылке", callback_data=f'broadcast_detail_{broadcast_id}'),
          InlineKeyboardButton("📋 К списку", callback_data='admin_broadcasts_list')]
     ]
-    await update.message.reply_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
+    await update.message.reply_text(result_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     return True
 
 async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1149,9 +1149,9 @@ async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("📊 Статистика пока пуста", show_alert=True)
         return
 
-    text = "🏆 *Рейтинг активности*\n\n"  # Исправлено
+    text = "<b>🏆 Рейтинг активности</b>\n\n"
     for i, (uid, nick, username, attended) in enumerate(stats, 1):
-        safe_nick = escape_markdown_v2(nick) if nick else f"ID {uid}"
+        safe_nick = html.escape(nick or f"ID {uid}")
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "📌"
         text += f"{medal} {i}. {safe_nick}\n"
         text += f"   🎯 Активность: {attended}\n\n"
@@ -1160,7 +1160,7 @@ async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("◀️ Назад в админ-панель", callback_data='admin_back')],
         [InlineKeyboardButton("❌ Закрыть", callback_data='close_stats')]
     ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='MarkdownV2')
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     await query.answer()
 
 async def delete_all_broadcasts(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1233,7 +1233,7 @@ async def confirm_delete_broadcast(update: Update, context: ContextTypes.DEFAULT
     user_id = query.from_user.id
     try:
         broadcast_text = get_broadcast_text(broadcast_id) or "Без текста"
-        safe_text = escape_markdown_v2(broadcast_text)
+        safe_text = html.escape(broadcast_text)
 
         conn = get_connection()
         cur = conn.cursor()
@@ -1249,10 +1249,10 @@ async def confirm_delete_broadcast(update: Update, context: ContextTypes.DEFAULT
             try:
                 await context.bot.send_message(
                     chat_id=uid,
-                    text=f"❌ *РАССЫЛКА ОТМЕНЕНА*\n\n"  # Исправлено
+                    text=f"❌ <b>РАССЫЛКА ОТМЕНЕНА</b>\n\n"
                          f"Событие:\n{safe_text}\n\n"
                          f"Администратор отменил это событие.",
-                    parse_mode='MarkdownV2'
+                    parse_mode='HTML'
                 )
             except Exception as e:
                 logger.error(f"Failed to notify {uid} about cancelled broadcast: {e}")
@@ -1263,13 +1263,14 @@ async def confirm_delete_broadcast(update: Update, context: ContextTypes.DEFAULT
             pass
 
         keyboard = get_admin_keyboard()
+        safe_bid = html.escape(broadcast_id)
         await context.bot.send_message(
             chat_id=user_id,
-            text=f"✅ Рассылка `{broadcast_id}` успешно удалена!\n"
+            text=f"✅ Рассылка <code>{safe_bid}</code> успешно удалена!\n"
                  f"Удалено голосов: {votes_deleted}\n"
                  f"Уведомлено пользователей: {len(users)}",
             reply_markup=keyboard,
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         await query.answer()
     except Exception as e:
@@ -1285,18 +1286,19 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, broadcast_id, text, 
     except (ValueError, TypeError):
         time_str = str(event_time)
 
-    safe_text = escape_markdown_v2(text)
+    safe_text = html.escape(text)
+    safe_time = html.escape(time_str)
 
     for uid in users:
         try:
             await context.bot.send_message(
                 chat_id=uid,
-                text=f"⏰ *НАПОМИНАНИЕ*\n\n"  # Исправлено
+                text=f"⏰ <b>НАПОМИНАНИЕ</b>\n\n"
                      f"Через 30 минут начинается событие:\n"
                      f"📢 {safe_text}\n\n"
-                     f"🕒 Время начала: {time_str}\n\n"
-                     f"Если ты ещё не выбрал вариант - самое время!",
-                parse_mode='MarkdownV2'
+                     f"🕒 Время начала: {safe_time}\n\n"
+                     f"Если ты ещё не выбрал вариант — самое время!",
+                parse_mode='HTML'
             )
         except Exception as e:
             logger.error(f"Failed to send reminder to {uid}: {e}")
@@ -1341,15 +1343,15 @@ async def check_expired_events(context: ContextTypes.DEFAULT_TYPE):
     expired = cur.fetchall()
     for bid, text in expired:
         users = get_all_users()
-        safe_text = escape_markdown_v2(text)
+        safe_text = html.escape(text)
         for uid in users:
             try:
                 await context.bot.send_message(
                     chat_id=uid,
-                    text=f"⏰ *СОБЫТИЕ НАЧАЛОСЬ*\n\n"  # Исправлено
+                    text=f"⏰ <b>СОБЫТИЕ НАЧАЛОСЬ</b>\n\n"
                          f"📢 {safe_text}\n\n"
                          f"Голосование закрыто!",
-                    parse_mode='MarkdownV2'
+                    parse_mode='HTML'
                 )
             except Exception:
                 pass
@@ -1411,14 +1413,14 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📢 Начинаю рассылку для {len(users)} пользователей...")
     successful = 0
     failed = 0
-    safe_text = escape_markdown_v2(broadcast_text)
+    safe_text = html.escape(broadcast_text)
     for uid in users:
         try:
             await context.bot.send_message(
                 chat_id=uid,
-                text=f"📢 РАССЫЛКА КЛАНА:\n\n{safe_text}\n\nВыбери свой вариант:",
+                text=f"📢 <b>РАССЫЛКА КЛАНА:</b>\n\n{safe_text}\n\nВыбери свой вариант:",
                 reply_markup=reply_markup,
-                parse_mode='MarkdownV2'
+                parse_mode='HTML'
             )
             successful += 1
         except Exception as e:
@@ -1460,13 +1462,13 @@ async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     nickname = get_user_nickname(user.id) or "Не указан"
-    safe_nickname = escape_markdown_v2(nickname)
+    safe_nickname = html.escape(nickname)
     attended = get_user_attended_count(user.id)
-    text = f"👤 *Твой профиль*\n\n"  # Исправлено
-    text += f"🎮 Ник в игре: *{safe_nickname}*\n"  # Исправлено
-    text += f"📊 Посещено мероприятий: *{attended}*\n"  # Исправлено
+    text = "<b>👤 Твой профиль</b>\n\n"
+    text += f"🎮 Ник в игре: <b>{safe_nickname}</b>\n"
+    text += f"📊 Посещено мероприятий: <b>{attended}</b>\n"
 
-    await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='MarkdownV2')
+    await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='HTML')
 
 # ========================== ОСНОВНОЙ CALLBACK-ОБРАБОТЧИК ==========================
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1501,12 +1503,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if callback_data == 'back_to_me':
         nickname = get_user_nickname(user.id) or "Не указан"
-        safe_nickname = escape_markdown_v2(nickname)
+        safe_nickname = html.escape(nickname)
         attended = get_user_attended_count(user.id)
-        text = f"👤 *Твой профиль*\n\n"  # Исправлено
-        text += f"🎮 Ник в игре: *{safe_nickname}*\n"  # Исправлено
-        text += f"📊 Посещено мероприятий: *{attended}*\n"  # Исправлено
-        await query.edit_message_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='MarkdownV2')
+        text = "<b>👤 Твой профиль</b>\n\n"
+        text += f"🎮 Ник в игре: <b>{safe_nickname}</b>\n"
+        text += f"📊 Посещено мероприятий: <b>{attended}</b>\n"
+        await query.edit_message_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='HTML')
         await query.answer()
         return
 
@@ -1515,9 +1517,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if callback_data == 'admin_broadcast':
             await query.answer()
             await query.edit_message_text(
-                "📝 *Создание рассылки*\n\n"  # Исправлено
+                "<b>📝 Создание рассылки</b>\n\n"
                 "Отправь мне текст, который хочешь разослать всем верифицированным пользователям.\n\n"
-                "❌ Для отмены отправь /cancel"
+                "❌ Для отмены отправь /cancel",
+                parse_mode='HTML'
             )
             context.user_data['awaiting_broadcast'] = True
             return
@@ -1525,9 +1528,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if callback_data == 'admin_broadcast_event':
             await query.answer()
             await query.edit_message_text(
-                "📅 *Создание рассылки с событием*\n\n"  # Исправлено
+                "<b>📅 Создание рассылки с событием</b>\n\n"
                 "Шаг 1/3: Отправь текст рассылки:\n\n"
-                "❌ /cancel - отмена"
+                "❌ /cancel — отмена",
+                parse_mode='HTML'
             )
             context.user_data['broadcast_step'] = 1
             return
@@ -1811,14 +1815,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"📢 Начинаю рассылку для {len(users)} пользователей...")
         successful = 0
         failed = 0
-        safe_text = escape_markdown_v2(broadcast_text)
+        safe_text = html.escape(broadcast_text)
         for uid in users:
             try:
                 await context.bot.send_message(
                     chat_id=uid,
-                    text=f"📢 *НОВАЯ РАССЫЛКА КЛАНА*\n\n{safe_text}\n\nВыбери свой вариант:",  # Исправлено
+                    text=f"📢 <b>НОВАЯ РАССЫЛКА КЛАНА</b>\n\n{safe_text}\n\nВыбери свой вариант:",
                     reply_markup=reply_markup,
-                    parse_mode='MarkdownV2'
+                    parse_mode='HTML'
                 )
                 successful += 1
             except Exception as e:
@@ -1926,8 +1930,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             show_alert=True
         )
         await query.edit_message_text(
-            text="❌ *Рассылка удалена*\n\nЭто событие было отменено администратором.",  # Исправлено
-            reply_markup=InlineKeyboardMarkup([])
+            text="❌ <b>Рассылка удалена</b>\n\nЭто событие было отменено администратором.",
+            reply_markup=InlineKeyboardMarkup([]),
+            parse_mode='HTML'
         )
         return
 
@@ -2061,12 +2066,12 @@ async def handle_nickname(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return True
     add_user(user.id, user.username, user.first_name, nickname)
     context.user_data['awaiting_nickname'] = False
-    # Исправлено: убраны двойные звездочки, оставлены одинарные
+    safe_nick = html.escape(nickname)
     await update.message.reply_text(
         f"✅ Верификация успешна!\n\n"
-        f"Твой ник в игре: *{escape_markdown_v2(nickname)}*\n"
+        f"Твой ник в игре: <b>{safe_nick}</b>\n"
         f"Теперь ты будешь получать все важные объявления клана.",
-        parse_mode='MarkdownV2'
+        parse_mode='HTML'
     )
     for admin in ADMIN_IDS:
         try:
@@ -2211,7 +2216,7 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             successful = 0
             failed = 0
-            safe_text = escape_markdown_v2(broadcast_text)
+            safe_text = html.escape(broadcast_text)
             for uid in users:
                 try:
                     event_text = ""
@@ -2223,9 +2228,9 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             pass
                     await context.bot.send_message(
                         chat_id=uid,
-                        text=f"📢 *НОВАЯ РАССЫЛКА КЛАНА*{event_text}\n\n{safe_text}\n\nВыбери свой вариант:",  # Исправлено
+                        text=f"📢 <b>НОВАЯ РАССЫЛКА КЛАНА</b>{event_text}\n\n{safe_text}\n\nВыбери свой вариант:",
                         reply_markup=markup,
-                        parse_mode='MarkdownV2'
+                        parse_mode='HTML'
                     )
                     successful += 1
                 except Exception as e:
@@ -2279,20 +2284,21 @@ async def my_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if page < 1 or page > total_pages:
         page = 1
 
-    text = f"📋 *Мои рассылки* (стр. {page}/{total_pages})\n\n"  # Исправлено
+    text = f"<b>📋 Мои рассылки</b> (стр. {page}/{total_pages})\n\n"
     start = (page - 1) * per_page
     for i, bid in enumerate(broadcasts[start:start+per_page], start=start+1):
         info = get_broadcast_info(bid)
+        safe_bid = html.escape(bid)
         if info:
             preview = info['text'][:30] + "..." if info['text'] and len(info['text']) > 30 else (info['text'] or "Нет текста")
-            preview = escape_markdown_v2(preview)
+            preview = html.escape(preview)
             date_str = info['created_at'][:16] if info['created_at'] else "неизвестно"
-            text += f"{i}. `{bid}`\n   📅 {date_str}\n   📝 {preview}\n\n"
+            text += f"{i}. <code>{safe_bid}</code>\n   📅 {date_str}\n   📝 {preview}\n\n"
         else:
-            text += f"{i}. `{bid}`\n   (информация недоступна)\n\n"
+            text += f"{i}. <code>{safe_bid}</code>\n   (информация недоступна)\n\n"
 
     keyboard = get_my_broadcasts_keyboard(broadcasts, page, total_pages)
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode='MarkdownV2')
+    await query.edit_message_text(text, reply_markup=keyboard, parse_mode='HTML')
     await query.answer()
 
 async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE, broadcast_id):
@@ -2312,13 +2318,14 @@ async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE
     }.get(choice, '❓ Не голосовал')
     attended_text = "✅ Был отмечен" if attended else "❌ Не отмечен"
 
-    safe_text = escape_markdown_v2(info['text'])
+    safe_text = html.escape(info['text'])
+    safe_bid = html.escape(broadcast_id)
 
     stats = get_vote_stats(broadcast_id)
     total_votes = stats['going'] + stats['not_going']
 
-    text = f"📢 *{safe_text}*\n"  # Исправлено
-    text += f"🆔 `{broadcast_id}`\n"
+    text = f"<b>📢 {safe_text}</b>\n"
+    text += f"🆔 <code>{safe_bid}</code>\n"
     if info['created_at']:
         text += f"📅 Создана: {info['created_at'][:16]}\n"
     if info['event_time']:
@@ -2326,16 +2333,16 @@ async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE
             dt = datetime.fromisoformat(info['event_time'])
             text += f"🕒 Время события: {dt.strftime('%d.%m.%Y %H:%M')}\n"
         except (ValueError, TypeError):
-            safe_event_time = escape_markdown_v2(str(info['event_time']))
-            text += f"🕒 Время события: {safe_event_time}\n"
-    text += f"\n*Твой выбор:* {choice_text}\n"  # Исправлено
-    text += f"*Твоя отметка:* {attended_text}\n"  # Исправлено
+            safe_event = html.escape(str(info['event_time']))
+            text += f"🕒 Время события: {safe_event}\n"
+    text += f"\n<b>Твой выбор:</b> {choice_text}\n"
+    text += f"<b>Твоя отметка:</b> {attended_text}\n"
     text += f"\n📊 Всего проголосовало: {total_votes}"
 
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("◀️ Назад к списку", callback_data='my_broadcasts')
     ]])
-    await query.edit_message_text(text, reply_markup=keyboard, parse_mode='MarkdownV2')
+    await query.edit_message_text(text, reply_markup=keyboard, parse_mode='HTML')
     await query.answer()
 
 async def change_nickname_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2382,8 +2389,8 @@ async def handle_nickname_change(update: Update, context: ContextTypes.DEFAULT_T
     set_last_nickname_change(user.id, datetime.now().isoformat())
     context.user_data.pop('awaiting_nickname_change', None)
 
-    safe_new_nick = escape_markdown_v2(new_nick)
-    await update.message.reply_text(f"✅ Ник успешно изменён на *{safe_new_nick}*!", parse_mode='MarkdownV2')  # Исправлено
+    safe_new_nick = html.escape(new_nick)
+    await update.message.reply_text(f"✅ Ник успешно изменён на <b>{safe_new_nick}</b>!", parse_mode='HTML')
     await me_command(update, context)
     return True
 
