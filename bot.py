@@ -15,6 +15,7 @@ from telegram.ext import (
     ContextTypes,
     CallbackQueryHandler,
 )
+from telegram.error import BadRequest  # для обработки ошибок 400
 
 # ========================== КОНСТАНТЫ И НАСТРОЙКИ ==========================
 if os.environ.get('RAILWAY_ENVIRONMENT') or os.path.exists('/railway'):
@@ -867,18 +868,18 @@ async def show_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TY
             display = f"{status} {safe_nick}" + (f" | @{safe_username}" if safe_username else "")
             ignored.append(display)
 
-    text = f"📢 **{broadcast_text}**\n"
+    text = f"📢 *{broadcast_text}*\n"  # Исправлено: одинарные звездочки
     text += f"🆔 `{broadcast_id}`\n"
     text += f"📅 {created_at}\n\n"
-    text += f"✅ ** ({len(going)}):**\n"
+    text += f"✅ *({len(going)}):*\n"  # Исправлено
     for i, user in enumerate(going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-    text += f"❌ ** ({len(not_going)}):**\n"
+    text += f"❌ *({len(not_going)}):*\n"  # Исправлено
     for i, user in enumerate(not_going, 1):
         text += f"{i}. {user}\n"
     text += "\n"
-    text += f"⚠️ **Проигнорировали ({len(ignored)}):**\n"
+    text += f"⚠️ *Проигнорировали ({len(ignored)}):*\n"  # Исправлено
     for i, user in enumerate(ignored, 1):
         text += f"{i}. {user}\n"
 
@@ -917,7 +918,7 @@ async def mark_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, br
         await query.answer("❌ В базе нет пользователей", show_alert=True)
         return
 
-    text = f"📝 **Отметка присутствия**\nРассылка: `{broadcast_id}`\n\n"
+    text = f"📝 *Отметка присутствия*\nРассылка: `{broadcast_id}`\n\n"  # Исправлено
     going, not_going, ignored = [], [], []
     
     for uid, nick, username, choice, attended in all_users:
@@ -937,21 +938,21 @@ async def mark_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE, br
     user_map = {}
     
     if going:
-        text += f"✅ ** ({len(going)}):**\n"
+        text += f"✅ *({len(going)}):*\n"  # Исправлено
         for display in going:
             text += f"{counter}. {display}\n"
             user_map[str(counter)] = all_users[counter - 1][0]
             counter += 1
         text += "\n"
     if not_going:
-        text += f"❌ ** ({len(not_going)}):**\n"
+        text += f"❌ *({len(not_going)}):*\n"  # Исправлено
         for display in not_going:
             text += f"{counter}. {display}\n"
             user_map[str(counter)] = all_users[counter - 1][0]
             counter += 1
         text += "\n"
     if ignored:
-        text += f"⚠️ **Проигнорировали ({len(ignored)}):**\n"
+        text += f"⚠️ *Проигнорировали ({len(ignored)}):*\n"  # Исправлено
         for display in ignored:
             text += f"{counter}. {display}\n"
             user_map[str(counter)] = all_users[counter - 1][0]
@@ -992,7 +993,7 @@ async def enter_attendance_numbers(update: Update, context: ContextTypes.DEFAULT
     all_users = cur.fetchall()
     conn.close()
 
-    text = f"📝 **Отметка присутствия**\nРассылка: `{broadcast_id}`\n\n**Список пользователей:**\n\n"
+    text = f"📝 *Отметка присутствия*\nРассылка: `{broadcast_id}`\n\n*Список пользователей:*\n\n"  # Исправлено
     going, not_going, ignored = [], [], []
     
     for uid, nick, username, choice, attended in all_users:
@@ -1010,25 +1011,25 @@ async def enter_attendance_numbers(update: Update, context: ContextTypes.DEFAULT
 
     counter = 1
     if going:
-        text += f"✅ ** ({len(going)}):**\n"
+        text += f"✅ *({len(going)}):*\n"  # Исправлено
         for display in going:
             text += f"`{counter}.` {display}\n"
             counter += 1
         text += "\n"
     if not_going:
-        text += f"❌ ** ({len(not_going)}):**\n"
+        text += f"❌ *({len(not_going)}):*\n"  # Исправлено
         for display in not_going:
             text += f"`{counter}.` {display}\n"
             counter += 1
         text += "\n"
     if ignored:
-        text += f"⚠️ **Проигнорировали ({len(ignored)}):**\n"
+        text += f"⚠️ *Проигнорировали ({len(ignored)}):*\n"  # Исправлено
         for display in ignored:
             text += f"`{counter}.` {display}\n"
             counter += 1
         text += "\n"
 
-    text += f"**Всего пользователей:** {len(all_users)}\n\n"
+    text += f"*Всего пользователей:* {len(all_users)}\n\n"  # Исправлено
     text += "Введи номера присутствовавших в формате:\n`1-5-8-3-9-13`\n\n"
 
     keyboard = [
@@ -1113,7 +1114,7 @@ async def handle_attendance_numbers(update: Update, context: ContextTypes.DEFAUL
             not_found.append(str(num))
 
     context.user_data.pop('awaiting_attendance_numbers', None)
-    result_text = f"📊 **Результат отметки**\nРассылка: `{broadcast_id}`\n\n✅ Успешно отмечено: {marked}\n"
+    result_text = f"📊 *Результат отметки*\nРассылка: `{broadcast_id}`\n\n✅ Успешно отмечено: {marked}\n"  # Исправлено
     if marked_list:
         result_text += "Отмечены:\n" + "\n".join(marked_list) + "\n"
     if not_found:
@@ -1147,7 +1148,7 @@ async def show_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("📊 Статистика пока пуста", show_alert=True)
         return
 
-    text = "🏆 **Рейтинг активности**\n\n"
+    text = "🏆 *Рейтинг активности*\n\n"  # Исправлено
     for i, (uid, nick, username, attended) in enumerate(stats, 1):
         safe_nick = escape_markdown_v2(nick) if nick else f"ID {uid}"
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "📌"
@@ -1247,7 +1248,7 @@ async def confirm_delete_broadcast(update: Update, context: ContextTypes.DEFAULT
             try:
                 await context.bot.send_message(
                     chat_id=uid,
-                    text=f"❌ **РАССЫЛКА ОТМЕНЕНА**\n\n"
+                    text=f"❌ *РАССЫЛКА ОТМЕНЕНА*\n\n"  # Исправлено
                          f"Событие:\n{safe_text}\n\n"
                          f"Администратор отменил это событие.",
                     parse_mode='MarkdownV2'
@@ -1289,7 +1290,7 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, broadcast_id, text, 
         try:
             await context.bot.send_message(
                 chat_id=uid,
-                text=f"⏰ **НАПОМИНАНИЕ**\n\n"
+                text=f"⏰ *НАПОМИНАНИЕ*\n\n"  # Исправлено
                      f"Через 30 минут начинается событие:\n"
                      f"📢 {safe_text}\n\n"
                      f"🕒 Время начала: {time_str}\n\n"
@@ -1344,7 +1345,7 @@ async def check_expired_events(context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     chat_id=uid,
-                    text=f"⏰ **СОБЫТИЕ НАЧАЛОСЬ**\n\n"
+                    text=f"⏰ *СОБЫТИЕ НАЧАЛОСЬ*\n\n"  # Исправлено
                          f"📢 {safe_text}\n\n"
                          f"Голосование закрыто!",
                     parse_mode='MarkdownV2'
@@ -1460,9 +1461,9 @@ async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nickname = get_user_nickname(user.id) or "Не указан"
     safe_nickname = escape_markdown_v2(nickname)
     attended = get_user_attended_count(user.id)
-    text = f"👤 **Твой профиль**\n\n"
-    text += f"🎮 Ник в игре: **{safe_nickname}**\n"
-    text += f"📊 Посещено мероприятий: **{attended}**\n"
+    text = f"👤 *Твой профиль*\n\n"  # Исправлено
+    text += f"🎮 Ник в игре: *{safe_nickname}*\n"  # Исправлено
+    text += f"📊 Посещено мероприятий: *{attended}*\n"  # Исправлено
 
     await update.message.reply_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='MarkdownV2')
 
@@ -1501,9 +1502,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nickname = get_user_nickname(user.id) or "Не указан"
         safe_nickname = escape_markdown_v2(nickname)
         attended = get_user_attended_count(user.id)
-        text = f"👤 **Твой профиль**\n\n"
-        text += f"🎮 Ник в игре: **{safe_nickname}**\n"
-        text += f"📊 Посещено мероприятий: **{attended}**\n"
+        text = f"👤 *Твой профиль*\n\n"  # Исправлено
+        text += f"🎮 Ник в игре: *{safe_nickname}*\n"  # Исправлено
+        text += f"📊 Посещено мероприятий: *{attended}*\n"  # Исправлено
         await query.edit_message_text(text, reply_markup=get_me_keyboard(user.id), parse_mode='MarkdownV2')
         await query.answer()
         return
@@ -1513,7 +1514,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if callback_data == 'admin_broadcast':
             await query.answer()
             await query.edit_message_text(
-                "📝 **Создание рассылки**\n\n"
+                "📝 *Создание рассылки*\n\n"  # Исправлено
                 "Отправь мне текст, который хочешь разослать всем верифицированным пользователям.\n\n"
                 "❌ Для отмены отправь /cancel"
             )
@@ -1523,7 +1524,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if callback_data == 'admin_broadcast_event':
             await query.answer()
             await query.edit_message_text(
-                "📅 **Создание рассылки с событием**\n\n"
+                "📅 *Создание рассылки с событием*\n\n"  # Исправлено
                 "Шаг 1/3: Отправь текст рассылки:\n\n"
                 "❌ /cancel - отмена"
             )
@@ -1814,7 +1815,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     chat_id=uid,
-                    text=f"📢 **НОВАЯ РАССЫЛКА КЛАНА**\n\n{safe_text}\n\nВыбери свой вариант:",
+                    text=f"📢 *НОВАЯ РАССЫЛКА КЛАНА*\n\n{safe_text}\n\nВыбери свой вариант:",  # Исправлено
                     reply_markup=reply_markup,
                     parse_mode='MarkdownV2'
                 )
@@ -1923,7 +1924,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             show_alert=True
         )
         await query.edit_message_text(
-            text="❌ **Рассылка удалена**\n\nЭто событие было отменено администратором.",
+            text="❌ *Рассылка удалена*\n\nЭто событие было отменено администратором.",  # Исправлено
             reply_markup=InlineKeyboardMarkup([])
         )
         return
@@ -2058,9 +2059,10 @@ async def handle_nickname(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return True
     add_user(user.id, user.username, user.first_name, nickname)
     context.user_data['awaiting_nickname'] = False
+    # Исправлено: убраны двойные звездочки, оставлены одинарные
     await update.message.reply_text(
         f"✅ Верификация успешна!\n\n"
-        f"Твой ник в игре: **{escape_markdown_v2(nickname)}**\n"
+        f"Твой ник в игре: *{escape_markdown_v2(nickname)}*\n"
         f"Теперь ты будешь получать все важные объявления клана.",
         parse_mode='MarkdownV2'
     )
@@ -2099,7 +2101,7 @@ async def handle_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TY
         kb = [[InlineKeyboardButton("✅ Отправить", callback_data='confirm_broadcast'),
                InlineKeyboardButton("❌ Отмена", callback_data='cancel_broadcast')]]
         await update.message.reply_text(
-            f"📢 **Подтверждение рассылки**\n\n"
+            f"📢 *Подтверждение рассылки*\n\n"  # Исправлено
             f"Текст:\n```\n{text}\n```\n\n"
             f"Отправить всем верифицированным пользователям?",
             reply_markup=InlineKeyboardMarkup(kb),
@@ -2218,7 +2220,7 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             pass
                     await context.bot.send_message(
                         chat_id=uid,
-                        text=f"📢 **НОВАЯ РАССЫЛКА КЛАНА**{event_text}\n\n{safe_text}\n\nВыбери свой вариант:",
+                        text=f"📢 *НОВАЯ РАССЫЛКА КЛАНА*{event_text}\n\n{safe_text}\n\nВыбери свой вариант:",  # Исправлено
                         reply_markup=markup,
                         parse_mode='MarkdownV2'
                     )
@@ -2274,7 +2276,7 @@ async def my_broadcasts_list(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if page < 1 or page > total_pages:
         page = 1
 
-    text = f"📋 **Мои рассылки** (стр. {page}/{total_pages})\n\n"
+    text = f"📋 *Мои рассылки* (стр. {page}/{total_pages})\n\n"  # Исправлено
     start = (page - 1) * per_page
     for i, bid in enumerate(broadcasts[start:start+per_page], start=start+1):
         info = get_broadcast_info(bid)
@@ -2312,7 +2314,7 @@ async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE
     stats = get_vote_stats(broadcast_id)
     total_votes = stats['going'] + stats['not_going']
 
-    text = f"📢 **{safe_text}**\n"
+    text = f"📢 *{safe_text}*\n"  # Исправлено
     text += f"🆔 `{broadcast_id}`\n"
     if info['created_at']:
         text += f"📅 Создана: {info['created_at'][:16]}\n"
@@ -2323,8 +2325,8 @@ async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE
         except:
             safe_event_time = escape_markdown_v2(info['event_time'])
             text += f"🕒 Время события: {safe_event_time}\n"
-    text += f"\n**Твой выбор:** {choice_text}\n"
-    text += f"**Твоя отметка:** {attended_text}\n"
+    text += f"\n*Твой выбор:* {choice_text}\n"  # Исправлено
+    text += f"*Твоя отметка:* {attended_text}\n"  # Исправлено
     text += f"\n📊 Всего проголосовало: {total_votes}"
 
     keyboard = InlineKeyboardMarkup([[
@@ -2378,7 +2380,7 @@ async def handle_nickname_change(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data.pop('awaiting_nickname_change', None)
 
     safe_new_nick = escape_markdown_v2(new_nick)
-    await update.message.reply_text(f"✅ Ник успешно изменён на **{safe_new_nick}**!", parse_mode='MarkdownV2')
+    await update.message.reply_text(f"✅ Ник успешно изменён на *{safe_new_nick}*!", parse_mode='MarkdownV2')  # Исправлено
     await me_command(update, context)
     return True
 
