@@ -24,7 +24,7 @@ if os.environ.get('RAILWAY_ENVIRONMENT') or os.path.exists('/railway'):
 else:
     DB_PATH = 'clanbot.db'
 
-TOKEN = os.environ.get('TOKEN') or '8235761382:AAGil59hWQ_fcTefFAYqohFcVm6Lw9eu6oM'
+TOKEN = os.environ.get('TOKEN')
 if not TOKEN:
     raise ValueError("❌ Переменная окружения TOKEN не задана!")
 
@@ -186,7 +186,7 @@ def can_change_nickname(user_id):
         else:
             remaining = 24 * 3600 - delta.total_seconds()
             return False, int(remaining)
-    except:
+    except (ValueError, TypeError):
         return True, 0
 
 def get_user_attended_count(user_id):
@@ -342,6 +342,7 @@ def get_vote_stats(broadcast_id):
     return stats
 
 def get_formatted_stats(broadcast_id):
+    """Возвращает HTML-текст статистики (parse_mode='HTML')."""
     conn = get_connection()
     cur = conn.cursor()
 
@@ -370,8 +371,8 @@ def get_formatted_stats(broadcast_id):
     for uid, choice, username, first_name, nickname in votes:
         voted_user_ids.add(uid)
         display_name = nickname or first_name or "Unknown"
-        safe_name = escape_markdown_v2(display_name)
-        safe_username = escape_markdown_v2(username) if username else None
+        safe_name = html.escape(display_name)
+        safe_username = html.escape(username) if username else ""
         display = f"👤 {safe_name}" + (f" (@{safe_username})" if safe_username else "")
         if choice == 'going':
             going_list.append(display)
@@ -382,22 +383,22 @@ def get_formatted_stats(broadcast_id):
     for uid, username, first_name, nickname in all_users:
         if uid not in voted_user_ids:
             display_name = nickname or first_name or "Unknown"
-            safe_name = escape_markdown_v2(display_name)
-            safe_username = escape_markdown_v2(username) if username else None
+            safe_name = html.escape(display_name)
+            safe_username = html.escape(username) if username else ""
             display = f"👤 {safe_name}" + (f" (@{safe_username})" if safe_username else "")
             ignored_list.append(display)
 
-    text = f"📊 Статистика голосования\n"
-    text += f"🆔 Рассылка: {broadcast_id}\n"
+    safe_bid = html.escape(broadcast_id)
+    text = f"<b>📊 Статистика голосования</b>\n"
+    text += f"🆔 Рассылка: <code>{safe_bid}</code>\n"
     if cooldown:
         text += f"⏱ Кулдаун: {cooldown} мин.\n"
     if event_time:
         try:
             dt = datetime.fromisoformat(event_time)
             text += f"🕒 Время события: {dt.strftime('%d.%m.%Y %H:%M')}\n"
-        except:
-            safe_event_time = escape_markdown_v2(event_time)
-            text += f"🕒 Время события: {safe_event_time}\n"
+        except (ValueError, TypeError):
+            text += f"🕒 Время события: {html.escape(str(event_time))}\n"
     text += f"🕒 Обновлено: {datetime.now().strftime('%H:%M:%S')}\n\n"
 
     text += f"✅: {len(going_list)}\n"
@@ -520,7 +521,7 @@ def can_change_vote(user_id, broadcast_id, cooldown_minutes):
         else:
             remaining = cooldown_minutes - minutes_passed
             return False, round(remaining, 1)
-    except:
+    except (ValueError, TypeError):
         return True, 0
 
 def parse_event_time(time_input):
@@ -533,7 +534,7 @@ def parse_event_time(time_input):
             hours = int(time_input[1:])
             event_time = datetime.now() + timedelta(hours=hours)
             return event_time.isoformat()
-        except:
+        except (ValueError, TypeError):
             return False
 
     if ':' in time_input and len(time_input) <= 5:
@@ -544,17 +545,17 @@ def parse_event_time(time_input):
             if event_time < now:
                 event_time += timedelta(days=1)
             return event_time.isoformat()
-        except:
+        except (ValueError, TypeError):
             return False
 
     try:
         event_time = datetime.strptime(time_input, "%d.%m.%Y %H:%M")
         return event_time.isoformat()
-    except:
+    except ValueError:
         try:
             event_time = datetime.strptime(time_input, "%d.%m.%Y")
             return event_time.isoformat()
-        except:
+        except ValueError:
             return False
 
 def save_stats_message(broadcast_id, admin_id, message_id):
@@ -1258,7 +1259,7 @@ async def confirm_delete_broadcast(update: Update, context: ContextTypes.DEFAULT
 
         try:
             await query.delete_message()
-        except:
+        except Exception:
             pass
 
         keyboard = get_admin_keyboard()
@@ -1281,8 +1282,8 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, broadcast_id, text, 
     try:
         dt = datetime.fromisoformat(event_time)
         time_str = dt.strftime("%d.%m.%Y в %H:%M")
-    except:
-        time_str = event_time
+    except (ValueError, TypeError):
+        time_str = str(event_time)
 
     safe_text = escape_markdown_v2(text)
 
@@ -1306,7 +1307,7 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE, broadcast_id, text, 
                 chat_id=admin,
                 text=f"✅ Напоминание о событии `{broadcast_id}` отправлено {len(users)} пользователям!"
             )
-        except:
+        except Exception:
             pass
 
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -1350,7 +1351,7 @@ async def check_expired_events(context: ContextTypes.DEFAULT_TYPE):
                          f"Голосование закрыто!",
                     parse_mode='MarkdownV2'
                 )
-            except:
+            except Exception:
                 pass
         cur.execute('UPDATE broadcast_texts SET expired_notified = 1 WHERE broadcast_id = ?', (bid,))
         conn.commit()
@@ -1428,7 +1429,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=user_id,
         text=stats_text,
         reply_markup=get_stats_keyboard(broadcast_id),
-        parse_mode='MarkdownV2'
+        parse_mode='HTML'
     )
     save_stats_message(broadcast_id, user_id, stats_message.message_id)
     await update.message.reply_text(f"✅ Рассылка завершена. Успешно: {successful}, Ошибок: {failed}")
@@ -1449,7 +1450,7 @@ async def track_chat_members(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         admin,
                         f"Пользователь {left_user.full_name} покинул клан и удален из рассылки."
                     )
-                except:
+                except Exception:
                     pass
 
 async def me_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1551,10 +1552,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if callback_data == 'admin_users' or callback_data.startswith('admin_users_'):
             await query.answer()
             page = 1
-            if '_' in callback_data and callback_data.split('_')[1].isdigit():
+            if callback_data.startswith('admin_users_'):
                 try:
-                    page = int(callback_data.split('_')[1])
-                except:
+                    page = int(callback_data.split('_')[-1])
+                except (ValueError, IndexError):
                     page = 1
             per_page = 15
             offset = (page - 1) * per_page
@@ -1655,7 +1656,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         text="❌ <b>СТАТИСТИКА СБРОШЕНА</b>\n\nАдминистратор сбросил всю статистику. Все активные рассылки отменены.",
                         parse_mode='HTML'
                     )
-                except:
+                except Exception:
                     pass
             await query.answer(f"✅ Статистика полностью сброшена, уведомлено {len(users)} пользователей", show_alert=True)
             await query.edit_message_text(
@@ -1738,7 +1739,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         broadcast_id = callback_data.replace('refresh_stats_', '')
         stats_text = get_formatted_stats(broadcast_id)
         try:
-            await query.edit_message_text(stats_text, reply_markup=get_stats_keyboard(broadcast_id), parse_mode='MarkdownV2')
+            await query.edit_message_text(stats_text, reply_markup=get_stats_keyboard(broadcast_id), parse_mode='HTML')
             await query.answer("✅ Статистика обновлена!")
         except Exception as e:
             if "Message is not modified" in str(e):
@@ -1767,7 +1768,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         broadcast_id = callback_data.replace('back_to_stats_', '')
         stats_text = get_formatted_stats(broadcast_id)
-        await query.edit_message_text(stats_text, reply_markup=get_stats_keyboard(broadcast_id), parse_mode='MarkdownV2')
+        await query.edit_message_text(stats_text, reply_markup=get_stats_keyboard(broadcast_id), parse_mode='HTML')
         return
 
     if callback_data.startswith('delete_broadcast_'):
@@ -1829,7 +1830,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=user.id,
             text=stats_text,
             reply_markup=get_stats_keyboard(broadcast_id),
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         save_stats_message(broadcast_id, user.id, stats_message.message_id)
         context.user_data.pop('broadcast_text', None)
@@ -1875,7 +1876,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         await query.edit_message_text(
             "🎮 Отлично! Ты в клане.\n\n"
-            "Напиши свой **ник в игре** (как тебя зовут в клане):"
+            "Напиши свой <b>ник в игре</b> (как тебя зовут в клане):",
+            parse_mode='HTML'
         )
         context.user_data['awaiting_nickname'] = True
         return
@@ -1888,7 +1890,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "❌ Это сообщение устарело. Пожалуйста, дождись новой рассылки.",
                 reply_markup=InlineKeyboardMarkup([])
             )
-        except:
+        except Exception:
             pass
         return
 
@@ -1903,7 +1905,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         try:
             await query.edit_message_text("❌ Ошибка обработки кнопки.", reply_markup=InlineKeyboardMarkup([]))
-        except:
+        except Exception:
             pass
         return
 
@@ -1913,7 +1915,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         try:
             await query.edit_message_text("❌ Неизвестное действие", reply_markup=InlineKeyboardMarkup([]))
-        except:
+        except Exception:
             pass
         return
 
@@ -1943,7 +1945,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=InlineKeyboardMarkup([])
                 )
                 return
-        except:
+        except (ValueError, TypeError):
             pass
 
     previous_vote = get_user_vote(user.id, broadcast_id)
@@ -1990,7 +1992,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_text += "\n\n🔄 Нажми на другую кнопку, чтобы изменить решение."
             else:
                 reply_markup = InlineKeyboardMarkup([])
-        except:
+        except (ValueError, TypeError):
             reply_markup = InlineKeyboardMarkup([])
     else:
         if action == 'going':
@@ -2022,7 +2024,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_id=stats_msg_id,
                     text=new_stats_text,
                     reply_markup=get_stats_keyboard(broadcast_id),
-                    parse_mode='MarkdownV2'
+                    parse_mode='HTML'
                 )
                 logger.info(f"Stats updated for broadcast {broadcast_id}")
             else:
@@ -2030,7 +2032,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 stats_message = await context.bot.send_message(
                     chat_id=admin,
                     text=new_stats_text,
-                    parse_mode='MarkdownV2'
+                    parse_mode='HTML'
                 )
                 save_stats_message(broadcast_id, admin, stats_message.message_id)
         except Exception as e:
@@ -2074,7 +2076,7 @@ async def handle_nickname(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👤 {user.first_name} (@{user.username})\n"
                 f"🎮 Ник: {nickname}"
             )
-        except:
+        except Exception:
             pass
     return True
 
@@ -2100,12 +2102,13 @@ async def handle_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data['awaiting_broadcast'] = False
         kb = [[InlineKeyboardButton("✅ Отправить", callback_data='confirm_broadcast'),
                InlineKeyboardButton("❌ Отмена", callback_data='cancel_broadcast')]]
+        safe_text = html.escape(text)
         await update.message.reply_text(
-            f"📢 *Подтверждение рассылки*\n\n"  # Исправлено
-            f"Текст:\n```\n{text}\n```\n\n"
+            f"<b>📢 Подтверждение рассылки</b>\n\n"
+            f"Текст:\n<pre>{safe_text}</pre>\n\n"
             f"Отправить всем верифицированным пользователям?",
             reply_markup=InlineKeyboardMarkup(kb),
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
         return True
 
@@ -2185,7 +2188,7 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cooldown = int(cooldown_input)
                 if cooldown < 0:
                     raise ValueError
-            except:
+            except (ValueError, TypeError):
                 await update.message.reply_text("❌ Введи число (0 или больше):")
                 return
 
@@ -2216,7 +2219,7 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         try:
                             dt = datetime.fromisoformat(event_time)
                             event_text = f"\n🕒 Время события: {dt.strftime('%d.%m.%Y %H:%M')}"
-                        except:
+                        except (ValueError, TypeError):
                             pass
                     await context.bot.send_message(
                         chat_id=uid,
@@ -2234,7 +2237,7 @@ async def handle_all_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=user.id,
                 text=stats_text,
                 reply_markup=get_stats_keyboard(broadcast_id),
-                parse_mode='MarkdownV2'
+                parse_mode='HTML'
             )
             save_stats_message(broadcast_id, user.id, stats_msg.message_id)
 
@@ -2322,8 +2325,8 @@ async def my_broadcast_detail(update: Update, context: ContextTypes.DEFAULT_TYPE
         try:
             dt = datetime.fromisoformat(info['event_time'])
             text += f"🕒 Время события: {dt.strftime('%d.%m.%Y %H:%M')}\n"
-        except:
-            safe_event_time = escape_markdown_v2(info['event_time'])
+        except (ValueError, TypeError):
+            safe_event_time = escape_markdown_v2(str(info['event_time']))
             text += f"🕒 Время события: {safe_event_time}\n"
     text += f"\n*Твой выбор:* {choice_text}\n"  # Исправлено
     text += f"*Твоя отметка:* {attended_text}\n"  # Исправлено
